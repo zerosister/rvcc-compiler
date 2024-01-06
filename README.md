@@ -1,2 +1,2 @@
-# rvcc-compiler
-from course rvcc-course,to build a small compiler
+## rvcc-compiler
+本编译器基于PLCT实验室的rvcc课程。
