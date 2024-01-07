@@ -5,6 +5,9 @@
 #include "stdbool.h"
 #include<string.h>
 
+// 全局变量 输入的字符串
+static char* currentInput;
+
 //单词种别
 typedef enum{
     TK_PUNCT,   //操作符 + -
@@ -22,6 +25,39 @@ struct Token{
     char* loc;          //字符串中位置
     int len;            //长度
 };
+
+// 输出错误出现位置，并退出
+static void verrorAt(char* loc,char* Fmt,va_list VA){
+    // 输出源信息
+    fprintf(stderr,"%s\n",currentInput);
+
+    // 输出出错信息
+    // 计算出错位置，loc为出错位置指针，currentInput为当前输入首地址
+    int pos = loc - currentInput;
+    // 将字符串补齐pos位，%*s允许传递一个整数参数输出相应长度空格:)
+    fprintf(stderr,"%*s",pos,"");
+    fprintf(stderr,"^ ");
+    // 报错信息
+    vfprintf(stderr,Fmt,VA);
+    fprintf(stderr,"\n");
+    va_end(VA);
+    exit(1);
+}
+
+// 分词(tokenize)时出错
+static void errorAt(char* loc,char* Fmt,...){
+    va_list VA;
+    va_start(VA, Fmt);
+    verrorAt(loc,Fmt,VA);
+}
+
+// 语法分析出错
+static void errorTok(Token* token,char* Fmt,...){
+    va_list VA;
+    va_start(VA,Fmt);
+    verrorAt(token->loc,Fmt,VA);
+}
+
 // 增加错误信息
 // static文件内可访问的函数
 // Fmt为传入字符串，...为可变参数，表示Fmt后面所有参数
@@ -58,11 +94,14 @@ static Token* newToken(TokenKind kind,int val,char* loc,int len){
 }
 
 // 终结符解析
-static Token *tokenize(char *p){
+static Token *tokenize(){
     // 使用一个链表进行存储各个Token
     // head表示链表头
-    Token* head = newToken(2,0,0,0);
-    Token* cur = head;
+    char* p = currentInput;
+    // 也可以用 Token head = {}; 相当于赋初值全为0
+    // Token* head = newToken(2,0,0,0);
+    Token head = {};
+    Token* cur = &head;
     while (*p){
         if(isspace(*p)){
             p++;
@@ -86,11 +125,15 @@ static Token *tokenize(char *p){
             p++;
             continue;
         }
+        else{
+            // 识别到非法字符
+            errorAt(p,"Baby~,invalid input");
+        }
     }
     cur->next = newToken(TK_EOF,0,p,0);
 
     // 因为头节点不存储信息故返回head->next
-    return head->next;
+    return head.next;
 }
 
 // 判断token值是否为指定值
@@ -99,6 +142,22 @@ static bool equal(Token* token, char* str){
     // memcmp 按照字典序比较 LHS<RHS返回负值，=返回0,>返回正值
     return memcmp(token->loc,str,token->len) == 0 && str[token->len] == '\0';
 }
+
+// 期待得到一个数字，否则报错
+static int getNumber(Token* token){
+    if(token->kind != TK_NUM){
+        errorTok(token,"Honey~,here expecte a number");
+    }
+    else return token->val;
+}
+
+// skip期待得到指定符号
+static Token* skip(Token* token,char* str){
+    if(!equal(token,str))
+        errorTok(token,"Sweety~,expected %s",str);
+    return token->next;
+}
+
 int main(int argc,char** argv){
     // argv[0]为程序名称，argv[1]为传入第一个参数...依此类推
     if(argc != 2){
@@ -106,38 +165,32 @@ int main(int argc,char** argv){
         error("%s:  invalid number of arguments",argv[0]);
     }
     // 分词
-    Token* token = tokenize(argv[1]);
+    currentInput = argv[1];
+    Token* token = tokenize();
     // 
     printf("\t.global main\n");
     printf("main:\n");
 
-    printf("\tli a0,%ld\n",token->val);
+    printf("\tli a0,%d\n",getNumber(token));
     token = token->next;
     while (token->kind != TK_EOF){
         if(token->kind == TK_PUNCT){
             // 用字符串比较替换为 用equal函数，方便拓展
             // if(*(token->loc) == '+')
-            if(equal(token,"+"))
-                printf("\taddi a0,a0,%ld\n",token->next->val);
+            if(equal(token,"+")){
+                printf("\taddi a0,a0,%d\n",getNumber(token->next));
+                token = token->next->next;
+                continue;
+            }
             else{
-                // 下面注释掉的这行代码会出问题，因为 %ld 会打印出其补数 (待考证)
-                // printf("\taddi a0,a0,%ld\n",(-(token->next->val)));  
-                
-                // 但是strtol函数却可以处理负值
-                // char** p0 = NULL;
-                // printf("\t test: addi a0,a0,%d\n",strtol("-1003",p0,10));
-                
-                printf("\taddi a0,a0,-%ld\n",token->next->val);
+                token = skip(token,"-");
+                printf("\taddi a0,a0,-%d\n",getNumber(token));
+                token = token->next;
+                continue;
             }
         }
-        token = token->next;
     }
     printf("\tret\n");
     return 0;
-    // 逐字符识别不对，如果数字长度是大于1的呢？
-    // 且若数字为小数呢？（应当暂时不考虑小数，因为riscv汇编代码不能直接处理小数）
-    // solution:运用函数strtol string to long
-    
-   // 若此时为while(ch)则存在一个问题，因为指针不为NULL，故会死循环
 }
 
