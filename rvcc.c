@@ -145,7 +145,7 @@ static Status* newStatus(StatusKind kind){
 static Status* expr(Token** rest ,Token* token){
     // 新建状态
     Status* expr = newStatus(ST_Expr);
-    if(token->kind == TK_LBR || token->kind == TK_NUM){
+    if(token->kind == TK_LBR || token->kind == TK_NUM || token->kind == TK_SUB || token->kind == TK_ADD){
         // printf("Expr -> Mul Expr'\n");
         // 递归进入Mul识别
         Status* mult = mul(rest,token);
@@ -193,7 +193,7 @@ static Status* mul(Token** rest ,Token* token){
     // 新建状态
     Status* mult = newStatus(ST_Mul);
     // 进入数字识别
-    if(token->kind == TK_LBR || token->kind == TK_NUM){
+    if(token->kind == TK_LBR || token->kind == TK_NUM || token->kind == TK_SUB || token->kind == TK_ADD){
         // printf("Mul -> Primary Mul'\n");
         Status* prim = primary(rest,token);
         Status* mult_P = mul_Prime(rest,*rest,prim->ptr);
@@ -234,35 +234,50 @@ static Status* mul_Prime(Token** rest ,Token* token,Node* inherit){
     return NULL;
 }
 
-// Primary -> num | (Expr)
+// Primary -> num | (Expr) | + Primary | - Primary
 static Status* primary(Token** rest ,Token* token){
     Status* prim = newStatus(ST_Primary);
-    if(token->kind == TK_LBR){
-        // 识别到 Primary -> (Expr)
-        // printf("Primary -> (Expr)\n");
-        *rest = token->next; 
-        token = token->next;
-        Status* Expr = expr(rest,token);
-        // 同时此时需要消耗 )
-        token = *rest;
-        if(token->kind == TK_RBR){
-            *rest = (*rest)->next;
+    switch (token->kind){
+        case TK_LBR:
+            // 识别到 Primary -> (Expr)
+            // printf("Primary -> (Expr)\n");
+            *rest = token->next; 
             token = token->next;
-            prim->ptr = Expr->ptr;
+            Status* Expr = expr(rest,token);
+            // 同时此时需要消耗 )
+            token = *rest;
+            if(token->kind == TK_RBR){
+                *rest = (*rest)->next;
+                token = token->next;
+                prim->ptr = Expr->ptr;
+                return prim;
+            }
+        case TK_NUM:
+            // 识别到 Primary -> num
+            // printf("Primary -> num\n");
+            prim->ptr = mkLeaf(token);
+            *rest = token->next;
             return prim;
-        }
+        case TK_SUB:
+            // 消耗 - 
+            *rest = token->next;
+            // 因为为从左到右遍历二叉树，所以需要先从左结点得到数值，再进行单元运算
+            // 所以课程中的从右到左遍历二叉树好处就是，单运算符时，运算符在左结点
+            prim->ptr = mkNode(token,primary(rest,*rest)->ptr,NULL);
+            return prim;
+        case TK_ADD:
+            // 不需要genCode，只需要消耗+即可
+            while (token->kind == TK_ADD){
+                // 最终会在种别为TK_NUM时停止
+                *rest = token->next;
+                token = *rest;
+            }
+            return primary(rest,*rest);
+        default:
+            break;
     }
-    else if(token->kind == TK_NUM){
-        // 识别到 Primary -> num
-        // printf("Primary -> num\n");
-        prim->ptr = mkLeaf(token);
-        *rest = token->next;
-        return prim;
-    }
-    else{
-        // 非法的
-        errorTok(token,"boo boo,a num is expected~");
-    }
+    // 非法的
+    errorTok(token,"boo boo,a num is expected~");
     return NULL;
 }
 
@@ -436,14 +451,26 @@ static void genCode(Node* root){
     }
     
     // 当前为操作符，递归遍历
-    if(!root->LNode)    errorTok(token_root,"Juliet~,An operand is losed when generating code~");
+    if(!root->LNode)
+        errorTok(token_root,"Juliet~,An operand is losed when generating code~");
     genCode(root->LNode);
     // 左操作数入栈
     Push();
 
     // 右操作数本身会在a0
-    if(!root->RNode)    errorTok(token_root,"Juliet~,An operand is losed when generating code~");
-    genCode(root->RNode);
+    if(!root->RNode){
+        // 可能为单元运算符 -
+        if(token_root->kind == TK_SUB){
+            // 数据存入a1
+            Pop("a1");
+            printf("\tsub a0,x0,a1\n");
+            return;
+        }
+        else
+            errorTok(token_root,"Juliet~,An operand is losed when generating code~");
+    }
+    else
+        genCode(root->RNode);
 
     // 将左结点值pop至a1中
     Pop("a1");
