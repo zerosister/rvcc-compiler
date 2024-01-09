@@ -2,15 +2,16 @@
 CFLAGS=-std=c11 -g -fno-common
 # 指定C编译器，来构建项目
 # CC=~/riscv/bin/riscv64-unknown-linux-gnu-gcc
-CC=clang
+CC=gcc
 
 main.o:
+# Compile and assemble,do not link
 	$(CC) -o main.o -c rvcc.c
 # 若make没有指定标签，默认指定makefile中第一个
 # rvcc tag,表示如何构建最终二进制文件，依赖于main.o,.o文件为.c文件中间产物
 rvcc: main.o
 # 将多个*.o文件编译为rvcc,riscv64编译器gcc 输出为rvcc,引用源文件为main.o
-	$(CC) -o rvcc $(CFLAGS) main.o
+	$(CC) -o rvcc $(CFLAGS) main.o -g
 
 # 测试标签，运行测试脚本
 test: rvcc

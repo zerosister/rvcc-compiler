@@ -16,14 +16,21 @@ static int Depth = 0;
 /************************ 数据结构声明 *************************/
 //单词种别
 typedef enum{
-    TK_ADD,    // +
-    TK_SUB,    // -
-    TK_MUL,    // *
-    TK_DIV,    // '/'
-    TK_LBR,    // '('
-    TK_RBR,    // ')'
-    TK_NUM,    //数字
-    TK_EOF     //终结符
+    TK_ADD,     // +
+    TK_SUB,     // -
+    TK_MUL,     // *
+    TK_DIV,     // '/'
+    TK_LBR,     // '('
+    TK_RBR,     // ')'
+    TK_NUM,     //数字
+    TK_NOT,     //!
+    TK_DEQ,     //== Double EQual
+    TK_NEQ,     //!= Not EQual
+    TK_BGT,     //> BiGger Than
+    TK_BGE,     //>= BiGger and Equal
+    TK_LST,     //< LeSs Than
+    TK_LSE,     //<= LeSs and Equal 
+    TK_EOF      //终结符
 } TokenKind;
  
 // 单词结构体,typedef为结构体取别名
@@ -48,16 +55,20 @@ struct Node{
 
 // 表示状态的种类
 typedef enum{
-    ST_Expr,       //E
-    ST_EPrim,      //E'
-    ST_Mul,        //T
-    ST_MPrim,      //T'
-    ST_Primary,    //F
-    ST_Head        //$栈顶 因为使用头插法
+    ST_Expr,        //E
+    ST_EPrim,       //E'
+    ST_Mul,         //T
+    ST_MPrim,       //T'
+    ST_Primary,     //F
+    ST_Equa,        //Equa
+    ST_EqPrim,      //Equa'
+    ST_Rela,        //Rela
+    ST_RePrim      //Rela'
 } StatusKind;
 
 // 状态
-typedef struct Status{
+typedef struct Status Status;
+struct Status{
     StatusKind kind;
     Node* inherit;  //继承属性
     Node* ptr;      //自身所指向结点
@@ -65,7 +76,7 @@ typedef struct Status{
 
     // 递归则不需要保存栈
     // Status* next;   //下一个状态
-}Status;
+};
 
 /************************ 函数声明 *************************/
 // 报错信息
@@ -85,6 +96,10 @@ static bool equal(Token* token, char* str);
 static int getNumber(Token* token);
 static Token* skip(Token* token,char* str);
 // 语法分析递归调用
+static Status* equation(Token** rest,Token* token);
+static Status* equation_Prime(Token** rest,Token* token,Node* inherit);
+static Status* rela(Token** rest,Token* token);
+static Status* rela_Prime(Token** rest,Token* token,Node* inherit);
 static Status* expr(Token** rest ,Token* token);
 static Status* expr_Prime(Token** rest ,Token* token,Node* inherit);
 static Status* mul(Token** rest ,Token* token);
@@ -131,15 +146,108 @@ static Status* newStatus(StatusKind kind){
 // so，回归课程中方法
 
 // 性质：递归下降
-// Expr = Mul (+ Mul | - Mul)*
-// Mul = Primary (* Primary | / Primary)*
-// Primary = (Expr) | num
 
+// Equa -> ! Equa | Rela Equa' 
+// Equa' -> == Rela Equa'  | != Rela Equa' | null
+// Rela -> E Rela'   
+// Rela' -> < E Rela' | > E Rela' | <= E Rela' | >= E Rela' | null   
 // Expr -> Mul Expr'
 // Expr' -> + Mul Expr1' | - Mul Expr1' | null
 // Mul -> Primary Mul'
 // Mul' -> * Primary Mul1' | / Primary Mul1' | null
-// Primary -> num | (Expr)
+// Primary -> num | (Equa)
+
+// Equa -> ! Equa | Rela Equa' 
+static Status* equation(Token** rest,Token* token){
+    Status* equa = newStatus(ST_Equa);
+    switch (token->kind){
+        case TK_LBR:
+        case TK_NUM:
+        case TK_ADD:
+        case TK_SUB:
+            // Equa -> Rela Equa'
+            Status* relation = rela(rest,token);
+            Status* equa_P = equation_Prime(rest,*rest,relation->ptr);
+            equa->ptr = equa_P->system;
+            return equa; 
+        case TK_NOT:
+            // Equa -> ! Equa,消耗 !
+            *rest = token->next;
+            equa->ptr = mkNode(token,equation(rest,*rest)->ptr,NULL);
+            return equa;
+        default:
+            break;
+    }
+}
+
+// Equa' -> == Rela Equa'  | != Rela Equa' | null
+static Status* equation_Prime(Token** rest,Token* token,Node* inherit){
+    Status* equa_P = newStatus(ST_EqPrim);
+    switch (token->kind){
+        case TK_DEQ:
+        case TK_NEQ:
+            // Equa' -> == Rela Equa' | != Rela Equa' 
+            *rest = token->next;
+            Status* relat = rela(rest,*rest);
+            Status* equa_P2 = equation_Prime(rest,*rest,mkNode(token,inherit,relat->ptr));
+            equa_P->system = equa_P2->system;
+            return equa_P;
+        case TK_RBR:
+        case TK_EOF:
+            // Equa' -> null
+            equa_P->system = inherit;
+            return equa_P;
+        default:
+            errorTok(token,"Superman! Something wrong with semantic~");
+    }
+    return NULL;
+}
+
+// Rela -> E Rela'  
+static Status* rela(Token** rest,Token* token){
+    Status* relat = newStatus(ST_Rela);
+    switch (token->kind){
+        case TK_LBR:
+        case TK_NUM:
+        case TK_ADD:
+        case TK_SUB:
+            // Rela -> E Rela'  
+            Status* expression = expr(rest,token);
+            Status* relat_P = rela_Prime(rest,*rest,expression->ptr);
+            relat->ptr = relat_P->system;
+            return relat;
+        default:
+            errorTok(token,"Spiderman!,it is not a relation equation~");
+    }
+    return NULL;
+}
+
+// Rela' -> < E Rela' | > E Rela' | <= E Rela' | >= E Rela' | null
+static Status* rela_Prime(Token** rest,Token* token,Node* inherit){
+    Status* realt_P = newStatus(ST_RePrim);
+    switch (token->kind){
+        case TK_LST:
+        case TK_BGT:
+        case TK_BGE:
+        case TK_LSE:
+            // Rela' -> < E Rela' | > E Rela' | <= E Rela' | >= E Rela'
+            *rest = token->next;
+            Status* expre = expr(rest,*rest);
+            Status* relat_P2 = rela_Prime(rest,*rest,mkNode(token,inherit,expre->ptr));
+            realt_P->system = relat_P2->system;
+            return realt_P;
+        case TK_DEQ:
+        case TK_NEQ:
+        case TK_EOF:
+        case TK_RBR:
+            // Rela' -> null
+            realt_P->system = inherit;
+            return realt_P;
+        default:
+            errorTok(token,"Batman!,it is not a relation equation~");
+    }
+    return NULL;
+}
 
 // Expr -> Mul Expr'
 static Status* expr(Token** rest ,Token* token){
@@ -174,11 +282,15 @@ static Status* expr_Prime(Token** rest ,Token* token,Node* inherit){
             Status* expr_P2 = expr_Prime(rest,*rest,mkNode(token,inherit,mult->ptr));
             expr_P->system = expr_P2->system;
             return expr_P;
-            break;
-        // 识别到 ) or $ ,Expr' -> null
         case TK_RBR:
         case TK_EOF:
-            // printf("Expr' -> null\n");
+        case TK_LST:
+        case TK_LSE:
+        case TK_BGE:
+        case TK_BGT:
+        case TK_NEQ:
+        case TK_DEQ:
+            // Follow(E')下 Expr' -> null
             expr_P->system = inherit;
             return expr_P;
         default:
@@ -221,9 +333,15 @@ static Status* mul_Prime(Token** rest ,Token* token,Node* inherit){
             break;
         // 识别到 ) or + or - or $,Mul' -> null
         case TK_RBR:
-        case TK_ADD:
-        case TK_SUB: 
         case TK_EOF:
+        case TK_LST:
+        case TK_LSE:
+        case TK_BGE:
+        case TK_BGT:
+        case TK_NEQ:
+        case TK_DEQ:
+        case TK_ADD:
+        case TK_SUB:
             // printf("Mul' -> null\n");
             mult_P->system = inherit;
             return mult_P;
@@ -234,22 +352,21 @@ static Status* mul_Prime(Token** rest ,Token* token,Node* inherit){
     return NULL;
 }
 
-// Primary -> num | (Expr) | + Primary | - Primary
+// Primary -> num | (Equa) | + Primary | - Primary
 static Status* primary(Token** rest ,Token* token){
     Status* prim = newStatus(ST_Primary);
     switch (token->kind){
         case TK_LBR:
-            // 识别到 Primary -> (Expr)
-            // printf("Primary -> (Expr)\n");
+            // 识别到 Primary -> (Equa)
             *rest = token->next; 
             token = token->next;
-            Status* Expr = expr(rest,token);
+            Status* equa = equation(rest,token);
             // 同时此时需要消耗 )
             token = *rest;
             if(token->kind == TK_RBR){
                 *rest = (*rest)->next;
                 token = token->next;
-                prim->ptr = Expr->ptr;
+                prim->ptr = equa->ptr;
                 return prim;
             }
         case TK_NUM:
@@ -336,26 +453,39 @@ static Token* newToken(TokenKind kind,int val,char* loc,int len){
 
 // 确定究竟为哪一种punctuation
 static int specify_puntc(char* p){
-    switch (*p)
-    {
+    switch (*p){
     case '+':
         return TK_ADD;
-        break;
     case '-':
         return TK_SUB;
-        break;
     case '*':
         return TK_MUL;
-        break;
     case '/':
         return TK_DIV;
-        break;
     case '(':
         return TK_LBR;
-        break;
     case ')':
         return TK_RBR;
-        break;
+    case '!':
+        if(*(p+1) == '=')
+            return TK_NEQ;
+        else 
+            return TK_NOT;
+    case '=':
+        if(*(p+1) == '=')
+            return TK_DEQ;
+        else
+            errorAt(p,"Beauty~,Now I only able to deal with == ~");
+    case '>':
+        if(*(p+1) == '=')
+            return TK_BGE;
+        else 
+            return TK_BGT;
+    case '<':
+        if(*(p+1) == '=')
+            return TK_LSE;
+        else    
+            return TK_LST;
     default:
         errorAt(p,"Darling T.T ~~ I can't deal with this punctuation");
     }
@@ -387,9 +517,21 @@ static Token *tokenize(){
         }
         else if (ispunct(*p)){
             // 识别运算符
-            cur->next = newToken(specify_puntc(p),0,p,1);
+            int tk_kind = specify_puntc(p);
+            int len = 1;
+            switch (tk_kind){
+                case TK_DEQ:
+                case TK_NEQ:
+                case TK_BGE:
+                case TK_LSE:
+                    len = 2;
+                    break;
+                default:
+                    break;
+            }
+            cur->next = newToken(tk_kind,0,p,len);
             cur = cur->next;
-            p++;
+            p+=cur->len;
             continue;
         }
         else{
@@ -457,19 +599,24 @@ static void genCode(Node* root){
     // 左操作数入栈
     Push();
 
-    // 右操作数本身会在a0
     if(!root->RNode){
-        // 可能为单元运算符 -
+        // 可能为单元运算符 - 或 !，二者操作不一样
+        Pop("a0");
         if(token_root->kind == TK_SUB){
-            // 数据存入a1
-            Pop("a1");
-            printf("\tsub a0,x0,a1\n");
+            // neg a0, a0是sub a0, x0, a0的别名, 即a0=0-a0
+            printf("\tneg a0,a0\n");
             return;
         }
-        else
+        else if(token_root->kind == TK_NOT){
+            // !操作为，若数值非零，则置为0，若为0，则置为1
+            // set equal zero,sltui a0, a0, 1,小于1当然只有0了
+            printf("  seqz a0, a0\n");
+            return;
+        }
             errorTok(token_root,"Juliet~,An operand is losed when generating code~");
     }
     else
+        // 右操作数本身会在a0
         genCode(root->RNode);
 
     // 将左结点值pop至a1中
@@ -486,6 +633,36 @@ static void genCode(Node* root){
             return;
         case TK_DIV:
             printf("\tdiv a0,a1,a0\n");
+            return;
+        case TK_LST:
+            // a1 < a0,slt:set less than:R[rd] = (R[rs1]<R[rs2])?1:0
+            printf("\tslt a0,a1,a0\n");
+            return;
+        case TK_BGE:
+            // a1 >= a0,即为slt取反
+            printf("\tslt a0,a1,a0\n");
+            // 取反不能用neg,-0 = 0
+            printf("\txori a0,a0,1\n");
+            return;
+        case TK_BGT:
+            // a1 > a0,将a0,a1换位即可
+            printf("\tslt a0,a0,a1\n");
+            return;
+        case TK_LSE:
+            // a1 <= a0,换位同BGE
+            printf("\tslt a0,a0,a1\n");
+            printf("\txori a0,a0,1\n");
+            return;
+        case TK_DEQ:
+            // a1 == a0
+            printf("\txor a0,a0,a1\n");
+            // equal zero?sltiu a0,a0,1
+            printf("\tseqz a0,a0\n");
+            return;
+        case TK_NEQ:
+            printf("\txor a0,a1,a0\n");
+            // not equal zero? sltu a0,x0,a0
+            printf("\tsnez a0,a0\n");
             return;
         default:
             break;
@@ -505,12 +682,12 @@ int main(int argc,char** argv){
     // 语法分析
     // 因为rest是用来记录的，所以需要新的指针
     Token** rest = &token;
-    Status* expretion = expr(rest,token);
+    Status* equa = equation(rest,token);
     assert((*rest)->kind == TK_EOF);
     // 代码生成
     printf("\t.global main\n");
     printf("main:\n");
-    genCode(expretion->ptr);
+    genCode(equa->ptr);
     // 栈未清零则报错
     assert(Depth == 0);
     printf("\tret\n");
