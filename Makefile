@@ -3,15 +3,19 @@ CFLAGS=-std=c11 -g -fno-common
 # 指定C编译器，来构建项目
 # CC=~/riscv/bin/riscv64-unknown-linux-gnu-gcc
 CC=gcc
+# C源代码文件，所有以.c结尾文件
+SRCS=$(wildcard *.c)
+# C文件编译生成的未链接的可重定位文件，将.c文件名替换为同名的.o结尾文件名
+OBJS=$(SRCS:.c=.o)
 
-main.o:
-# Compile and assemble,do not link
-	$(CC) -o main.o -c rvcc.c
 # 若make没有指定标签，默认指定makefile中第一个
 # rvcc tag,表示如何构建最终二进制文件，依赖于main.o,.o文件为.c文件中间产物
-rvcc: main.o
-# 将多个*.o文件编译为rvcc,riscv64编译器gcc 输出为rvcc,引用源文件为main.o
-	$(CC) -o rvcc $(CFLAGS) main.o -g
+rvcc: $(OBJS)
+# 将多个*.o文件编译为rvcc,riscv64编译器gcc 输出为rvcc,引用源文件为*.o
+# $@表示目标文件，此处为rvcc,$^表示依赖文件，此处为$(OBJS)
+	$(CC) -o $@ $(CFLAGS) $^
+# 所有的可重定位文件依赖于rvcc.h的头文件
+$(OBJS): rvcc.h
 
 # 测试标签，运行测试脚本
 test: rvcc
