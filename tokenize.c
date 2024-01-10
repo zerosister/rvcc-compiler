@@ -3,12 +3,6 @@
 // 输入的字符串
 static char* currentInput;
 
-/**************************** 函数调用**************************/
-static bool equal(Token* token, char* str);
-static int getNumber(Token* token);
-static Token* newToken(TokenKind kind,int val,char* loc,int len);
-static int specify_puntc(char* p);
-
 /************************** 错误处理 **************************/
 // 运行程序时参数出错
 void error(char* Fmt,...){
@@ -88,7 +82,7 @@ static int specify_puntc(char* p){
         if(*(p+1) == '=')
             return TK_DEQ;
         else
-            errorAt(p,"Beauty~,Now I only able to deal with == ~");
+            return TK_ASS;
     case '>':
         if(*(p+1) == '=')
             return TK_BGE;
@@ -108,7 +102,7 @@ static int specify_puntc(char* p){
 }
 
 // 判断token值是否为指定值
-static bool equal(Token* token, char* str){
+bool equal(Token* token, char* str){
     // LHS为左字符串，RHS为右字符串
     // memcmp 按照字典序比较 LHS<RHS返回负值，=返回0,>返回正值
     return memcmp(token->loc,str,token->len) == 0 && str[token->len] == '\0';
@@ -130,6 +124,23 @@ Token* skip(Token* token,char* str){
     return token->next;
 }
 
+bool startsWith(char* Str,char* SubStr){
+    // 比较两字符串前N个字符是否相等
+    return strncmp(Str,SubStr,strlen(SubStr)) == 0;
+}
+
+// 判断标记符首字母规则
+// [a-zA-Z_]
+static bool isIdent1(char c){
+    return ('a'<= c && c <= 'z') || ('A'<=c && c <= 'Z' || c == '_');
+}
+
+// 判断标记符其余字符规则
+// [0-9a-zA-Z_]
+static bool isIdent2(char c){
+    return isIdent1(c) || ('0' <= c && c <= '9');
+}
+
 // 终结符解析
 Token* tokenize(char* p){
     // 使用一个链表进行存储各个Token
@@ -144,17 +155,17 @@ Token* tokenize(char* p){
             p++;
             continue;
         }
-        else if(isdigit(*p)){
+        if(isdigit(*p)){
             char* startloc = p;
             // 获得数值的大小(absulute)
             int val = strtol(p,&p,10);
             // token长度
-            int len = p - startloc + 1;
+            int len = p - startloc;
             cur->next = newToken(TK_NUM,val,startloc,len);
             cur = cur->next;
             continue;
         }
-        else if (ispunct(*p)){
+        if (ispunct(*p)){
             // 识别运算符
             int tk_kind = specify_puntc(p);
             int len = 1;
@@ -173,10 +184,18 @@ Token* tokenize(char* p){
             p+=cur->len;
             continue;
         }
-        else{
-            // 识别到非法字符
-            errorAt(p,"Baby~,invalid input");
+        if (isIdent1(*p)){
+            char* startloc = p;
+            p++;
+            while (isIdent2(*(p))){
+                p++;
+            }
+            cur->next = newToken(TK_VAR,0,startloc,p-startloc);
+            cur = cur->next;
+            continue;
         }
+        // 识别到非法字符
+        errorAt(p,"Baby~,invalid input");
     }
     cur->next = newToken(TK_EOF,0,p,0);
 

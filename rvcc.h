@@ -1,3 +1,10 @@
+// 使用POSIX.1标准
+// 使用了strndup函数
+#define _POSIX_C_SOURCE 200809L
+
+// 规定是否使用hash桶的宏
+#define USE_HASH 0
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<ctype.h>
@@ -24,6 +31,8 @@ typedef enum{
     TK_LST,     //< LeSs Than
     TK_LSE,     //<= LeSs and Equal 
     TK_SEM,     //; Semicolon
+    TK_VAR,     //变量
+    TK_ASS,     //赋值符号
     TK_EOF      //终结符
 } TokenKind;
  
@@ -37,6 +46,45 @@ struct Token{
     int len;            //长度
 };
 
+// 交给预处理器判断编译rvcc.h中的哪个Obj
+#if USE_HASH
+// hash_size 即为hash桶的个数
+#define HASH_SIZE 13 
+typedef struct Obj Obj;  
+struct Obj{  
+    char* Name;         //变量名
+    int value;          //哈希值，防止每次都调用hash函数
+    struct Obj *next;   //下一个对象
+    int Offset;         //fp偏移量 
+};  
+  
+typedef struct HashTable HashTable;
+struct HashTable{ 
+    // hash_size个Obj指针数组 
+    Obj* objs[HASH_SIZE];  
+    int size;  
+};  
+
+unsigned int hash(char *Name, int size,int len) ;
+Obj* insert(HashTable *hashTable, char *Name, int len);
+Obj* search(HashTable *hashTable, char *Name, int len);
+void remove_hash(HashTable *hashTable, char *Name);
+#else
+// 本地变量（符号表）思考：每个方程有不同的符号表，故可以变量重名
+typedef struct Obj Obj;
+struct Obj{
+    Obj* Next;  //指向下一对象
+    char* Name; //变量名
+    int Offset; //fp的偏移量
+};
+
+// 方便之后对比，统一用上hash_table
+typedef struct HashTable HashTable;
+struct HashTable{
+    Obj* locals;
+};
+#endif
+
 // AST(抽象语法树)节点
 typedef struct Node Node;
 struct Node{
@@ -46,6 +94,7 @@ struct Node{
     // 当前token
     Token* token;
     Node* next;
+    Obj *Var;
 };
 
 // 表示状态的种类
@@ -58,7 +107,9 @@ typedef enum{
     ST_Equa,        //Equa
     ST_EqPrim,      //Equa'
     ST_Rela,        //Rela
-    ST_RePrim      //Rela'
+    ST_RePrim,      //Rela'
+    ST_Assign,       //Assign
+    ST_AssPrim      //Assign'
 } StatusKind;
 
 // 状态
@@ -68,11 +119,15 @@ struct Status{
     Node* inherit;  //继承属性
     Node* ptr;      //自身所指向结点
     Node* system;   //综合属性
-
-    // 递归则不需要保存栈
-    // Status* next;   //下一个状态
 };
 
+// 函数
+typedef struct Function Function;
+struct Function{
+    Node* Body;     //函数体
+    HashTable* Locals;    //本地变量
+    int StackSize;  //栈大小
+};
 /************************ 函数声明 *************************/
 // 报错信息
 void verrorAt(char* loc,char* Fmt,va_list VA);
@@ -83,9 +138,11 @@ void error(char* Fmt,...);
 // 词法分析入口
 Token* tokenize(char* p);
 Token* skip(Token* token,char* str);
+bool equal(Token* token, char* str);
+bool startsWith(char* Str,char* SubStr);
 
 // 语法分析入口
-Node* parse(Token** rest,Token* token);
+Function* parse(Token** rest,Token* token);
 
 // 汇编代码生成入口
-void genCode(Node* root);
+void genCode(Function* root);

@@ -1,8 +1,34 @@
 #include "rvcc.h"
 
-// 函数调用 
+// 符号表，hash_Table实现形式
+HashTable* hashTable = NULL;
+
+// 非递归的语法分析,发现LL(1)文法用栈其实无法解决本质问题
+// 因为仅仅为生成产生式时有用，附加语义动作则需要在parse中同时进行
+// so，回归课程中方法
+// 性质：递归下降
+
+// program = stmt*
+// stmt = exprStmt
+// exprStmt = expr ";"
+// 暂时 expr = assign
+// Assign -> Equa Assign'
+// Assign' -> = Equa Assign | null
+// Equa -> ! Equa | Rela Equa'
+// Equa' -> == Rela Equa'  | != Rela Equa' | null
+// Rela -> Add Rela'   
+// Rela' -> < Add Rela' | > Add Rela' | <= Add Rela' | >= Add Rela' | null   
+// Add -> Mul Add'
+// Add' -> + Mul Add1' | - Mul Add1' | null
+// Mul -> Primary Mul'
+// Mul' -> * Primary Mul1' | / Primary Mul1' | null
+// Primary -> num | (expr)
+
 static Node* stmt(Token** rest,Token* token);
 static Node* exprStmt(Token** rest,Token* token);
+static Status* expr(Token**rest, Token* token);
+static Status* assign(Token**rest,Token* token);
+static Status* assign_Prime(Token**rest,Token* token,Node* inherit);
 static Status* equation(Token** rest,Token* token);
 static Status* equation_Prime(Token** rest,Token* token,Node* inherit);
 static Status* rela(Token** rest,Token* token);
@@ -12,9 +38,70 @@ static Status* add_Prime(Token** rest ,Token* token,Node* inherit);
 static Status* mul(Token** rest ,Token* token);
 static Status* mul_Prime(Token** rest ,Token* token,Node* inherit);
 static Status* primary(Token** rest ,Token* token);
-static Node* mkNode(Token* token,Node* left,Node* right);
-static Node* mkLeaf(Token* token);
-static Status* newStatus(StatusKind kind);
+
+static HashTable* getHashTable(){
+    if (hashTable == NULL)
+        hashTable = calloc(1,sizeof(HashTable));
+    return hashTable;
+}
+
+#if USE_HASH
+// hash方法查找本地变量（符号）
+static Obj* findVar(Token* token){
+    hashTable = getHashTable();
+    return search(hashTable,token->loc,token->len);
+}
+
+// hash方法新增变量至符号表，而变量只会从token中产生
+static Obj* newVar(Token* token){
+    Obj* var = findVar(token);
+    if (var == NULL){
+        // 未找到，新建Obj
+        var = insert(getHashTable(),token->loc,token->len);
+    }
+    return var;
+}
+
+#else
+
+// 按照名称查找本地变量（符号）
+static Obj* findVar(Token* token){
+    HashTable* hashTable = getHashTable();
+    if (!hashTable->locals){
+        hashTable->locals = calloc(1,sizeof(Obj));
+    }
+    Obj* locals = hashTable->locals;
+    if (locals == NULL){
+        return NULL;
+    }
+    Obj* cmp = locals->Next;
+    while (cmp && !(startsWith(token->loc,cmp->Name)
+    &&(token->len == strlen(cmp->Name)))){
+        cmp = cmp->Next;
+    }
+    if (cmp && startsWith(token->loc,cmp->Name)
+    &&(token->len == strlen(cmp->Name)))
+        return cmp;
+    return NULL;
+}
+
+// 新增变量到符号表中
+static Obj* newVar(Token* token){
+    // 首先检查是否已在符号表中(性能优化？哈希表？)
+    Obj* var = findVar(token);
+    Obj* locals = getHashTable()->locals;
+    if (var == NULL){
+        var = calloc(1,sizeof(Obj));
+        var->Name = strndup(token->loc,token->len);
+        // 头插法插入符号表
+        if (locals->Next){
+            var->Next = locals->Next;   
+        }
+        locals->Next = var;
+    }
+    return var;
+}
+#endif
 
 // 生成新的内结点
 static Node* mkNode(Token* token,Node* left,Node* right){
@@ -32,6 +119,13 @@ static Node* mkLeaf(Token* token){
     return node;
 }
 
+// 生成新的变量结点
+static Node* mkVarNode(Token* token){
+    Node* node = mkLeaf(token);
+    node->Var = newVar(token);
+    return node;
+}
+
 // 新建一个状态
 static Status* newStatus(StatusKind kind){
     Status* status = calloc(1,sizeof(Status));
@@ -39,42 +133,63 @@ static Status* newStatus(StatusKind kind){
     return status;
 }
 
-
-// 非递归的语法分析,发现LL(1)文法用栈其实无法解决本质问题
-// 因为仅仅为生成产生式时有用，附加语义动作则需要在parse中同时进行
-// so，回归课程中方法
-
-// 性质：递归下降
-
-// program = stmt*
-// stmt = exprStmt
-// exprStmt = expr ";"
-// 暂时 expr = Equa
-// Equa -> ! Equa | Rela Equa' 
-// Equa' -> == Rela Equa'  | != Rela Equa' | null
-// Rela -> E Rela'   
-// Rela' -> < E Rela' | > E Rela' | <= E Rela' | >= E Rela' | null   
-// Add -> Mul Add'
-// Add' -> + Mul Add1' | - Mul Add1' | null
-// Mul -> Primary Mul'
-// Mul' -> * Primary Mul1' | / Primary Mul1' | null
-// Primary -> num | (Equa)
-
 static Node* stmt(Token** rest,Token* token){
     // 仅支持表达式语句
     return exprStmt(rest,token);
 }
 
 static Node* exprStmt(Token** rest,Token* token){
-    Node* root = equation(rest,token)->ptr;
-    if((*rest)->kind == TK_SEM){
-        *rest = (*rest)->next;
-        return root;
-    }
-    else 
-        skip(*rest,";");
+    Node* root = assign(rest,token)->ptr;
+    *rest = skip(*rest,";");
+    return root;
 }
 
+
+static Status* expr(Token**rest, Token* token){
+    return assign(rest,token);
+}
+
+// Assign -> Equa Assign'
+static Status* assign(Token**rest,Token* token){
+    Status* ass = newStatus(ST_Assign);
+    switch (token->kind){
+        case TK_LBR:
+        case TK_NUM:
+        case TK_ADD:
+        case TK_SUB:
+        case TK_NOT:
+        case TK_VAR:
+            // Assign -> Equa Assign'
+            Status* equa = equation(rest,token);
+            Status* ass_P = assign_Prime(rest,*rest,equa->ptr);
+            ass->ptr = ass_P->system;
+            return ass;
+        default:
+            errorTok(token,"Emily~,Something wrong when reducing an assignment");
+    }
+}
+
+// Assign' -> = Assign | null
+static Status* assign_Prime(Token**rest,Token* token,Node* inherit){
+    Status* ass_P = newStatus(ST_AssPrim);
+    switch (token->kind){
+        case TK_ASS:
+            // Assign' -> = Assign 
+            *rest = token->next;
+            // 其他单变元语句为了遍历方便，是把数值放在了右部，
+            Status* ass = assign(rest,*rest);
+            ass_P->system = mkNode(token,inherit,ass->ptr);
+            return ass_P;
+        case TK_RBR:
+        case TK_SEM:
+        case TK_EOF:
+            // Assign' -> = null
+            ass_P->system = inherit;
+            return ass_P;
+        default:
+            errorTok(token,"Ava~,maybe we need an '='");
+    }
+}
 // Equa -> ! Equa | Rela Equa' 
 static Status* equation(Token** rest,Token* token){
     Status* equa = newStatus(ST_Equa);
@@ -83,6 +198,8 @@ static Status* equation(Token** rest,Token* token){
         case TK_NUM:
         case TK_ADD:
         case TK_SUB:
+        // 新增变量等价于NUM
+        case TK_VAR:
             // Equa -> Rela Equa'
             Status* relation = rela(rest,token);
             Status* equa_P = equation_Prime(rest,*rest,relation->ptr);
@@ -94,7 +211,7 @@ static Status* equation(Token** rest,Token* token){
             equa->ptr = mkNode(token,equation(rest,*rest)->ptr,NULL);
             return equa;
         default:
-            break;
+            errorTok(token,"Lily~,Something wrong when reducing equation");
     }
 }
 
@@ -112,6 +229,7 @@ static Status* equation_Prime(Token** rest,Token* token,Node* inherit){
             return equa_P;
         case TK_RBR:
         case TK_SEM:
+        case TK_ASS:
         case TK_EOF:    //加入是为了防止编译器在此时即报错，需要等到expression 需要;时再报错
             // Equa' -> null
             equa_P->system = inherit;
@@ -130,6 +248,7 @@ static Status* rela(Token** rest,Token* token){
         case TK_NUM:
         case TK_ADD:
         case TK_SUB:
+        case TK_VAR:
             // Rela -> E Rela'  
             Status* addition = add(rest,token);
             Status* relat_P = rela_Prime(rest,*rest,addition->ptr);
@@ -159,6 +278,7 @@ static Status* rela_Prime(Token** rest,Token* token,Node* inherit){
         case TK_NEQ:
         case TK_SEM:
         case TK_RBR:
+        case TK_ASS:
         case TK_EOF:    //加入是为了防止编译器在此时即报错，需要等到expression 需要;时再报错
             // Rela' -> null
             realt_P->system = inherit;
@@ -173,18 +293,21 @@ static Status* rela_Prime(Token** rest,Token* token,Node* inherit){
 static Status* add(Token** rest ,Token* token){
     // 新建状态
     Status* add = newStatus(ST_Add);
-    if(token->kind == TK_LBR || token->kind == TK_NUM || token->kind == TK_SUB || token->kind == TK_ADD){
-        // printf("Add -> Mul Add'\n");
-        // 递归进入Mul识别
-        Status* mult = mul(rest,token);
-        // 传递继承属性到Add'识别
-        Status* add_P = add_Prime(rest,*rest,mult->ptr);
-        add->ptr = add_P->system;
-        return add;
+    switch (token->kind){
+        case TK_LBR:
+        case TK_NUM:
+        case TK_ADD:
+        case TK_SUB:
+        case TK_VAR:
+            // 递归进入Mul识别
+            Status* mult = mul(rest,token);
+            // 传递继承属性到Add'识别
+            Status* add_P = add_Prime(rest,*rest,mult->ptr);
+            add->ptr = add_P->system;
+            return add;
+        default:
+            errorTok(token,"Dumpling~,it is not an addition... : )");
     }
-    else
-        errorTok(token,"Dumpling~,it is not an addition... : )");
-    return NULL;
 }
 
 // Add' -> + Mul Add1' | - Mul Add1' | null
@@ -210,6 +333,7 @@ static Status* add_Prime(Token** rest ,Token* token,Node* inherit){
         case TK_BGT:
         case TK_NEQ:
         case TK_DEQ:
+        case TK_ASS:
         case TK_EOF:    //加入是为了防止编译器在此时即报错，需要等到expression 需要;时再报错
             // Follow(E')下 Add' -> null
             add_P->system = inherit;
@@ -226,16 +350,19 @@ static Status* mul(Token** rest ,Token* token){
     // 新建状态
     Status* mult = newStatus(ST_Mul);
     // 进入数字识别
-    if(token->kind == TK_LBR || token->kind == TK_NUM || token->kind == TK_SUB || token->kind == TK_ADD){
-        // printf("Mul -> Primary Mul'\n");
-        Status* prim = primary(rest,token);
-        Status* mult_P = mul_Prime(rest,*rest,prim->ptr);
-        mult->ptr = mult_P->system;
-        return mult;
+    switch (token->kind){
+        case TK_LBR:
+        case TK_NUM:
+        case TK_ADD:
+        case TK_SUB:
+        case TK_VAR:
+            Status* prim = primary(rest,token);
+            Status* mult_P = mul_Prime(rest,*rest,prim->ptr);
+            mult->ptr = mult_P->system;
+            return mult;
+        default:
+            errorTok(token,"Soulmate~,May be not a multipler");
     }
-    else
-        errorTok(token,"Soulmate~,May be not a multipler");
-    return NULL;
 }
 
 // Mul' -> * Primary Mul1' | / Primary Mul1' | null
@@ -263,6 +390,7 @@ static Status* mul_Prime(Token** rest ,Token* token,Node* inherit){
         case TK_DEQ:
         case TK_ADD:
         case TK_SUB:
+        case TK_ASS:
         case TK_EOF:    //加入是为了防止编译器在此时即报错，需要等到expression 需要;时再报错 
             // printf("Mul' -> null\n");
             mult_P->system = inherit;
@@ -274,7 +402,7 @@ static Status* mul_Prime(Token** rest ,Token* token,Node* inherit){
     return NULL;
 }
 
-// Primary -> num | (Equa) | + Primary | - Primary
+// Primary -> num | (Expr) | + Primary | - Primary
 static Status* primary(Token** rest ,Token* token){
     Status* prim = newStatus(ST_Primary);
     switch (token->kind){
@@ -282,15 +410,12 @@ static Status* primary(Token** rest ,Token* token){
             // 识别到 Primary -> (Equa)
             *rest = token->next; 
             token = token->next;
-            Status* equa = equation(rest,token);
+            Status* equa = expr(rest,token);
             // 同时此时需要消耗 )
             token = *rest;
-            if(token->kind == TK_RBR){
-                *rest = (*rest)->next;
-                token = token->next;
-                prim->ptr = equa->ptr;
-                return prim;
-            }
+            *rest = skip(token, ")");
+            prim->ptr = equa->ptr;
+            return prim;
         case TK_NUM:
             // 识别到 Primary -> num
             // printf("Primary -> num\n");
@@ -312,6 +437,11 @@ static Status* primary(Token** rest ,Token* token){
                 token = *rest;
             }
             return primary(rest,*rest);
+        case TK_VAR:
+            // 识别到变量
+            prim->ptr = mkVarNode(token);
+            *rest = token->next;
+            return prim;
         default:
             break;
     }
@@ -321,7 +451,7 @@ static Status* primary(Token** rest ,Token* token){
 }
 
 // program = stmt*
-Node* parse(Token** rest,Token* token){
+Function* parse(Token** rest,Token* token){
     // 程序为语句链表
     Node head = {};
     Node* cur = &head;
@@ -329,5 +459,10 @@ Node* parse(Token** rest,Token* token){
         cur->next = stmt(rest,*rest);
         cur = cur->next;
     }
-    return cur;
+
+    // 函数体存储语句的AST，locals存储变量
+    Function* prog = calloc(1,sizeof(Function));
+    prog->Body = head.next;
+    prog->Locals = getHashTable();
+    return prog;
 }
