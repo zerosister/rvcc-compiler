@@ -1,2 +1,2 @@
 ## rvcc-compiler
-本编译器基于PLCT实验室的rvcc课程。
+本编译器基于 PLCT 实验室的 rvcc 课程。

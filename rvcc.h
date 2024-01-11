@@ -1,9 +1,9 @@
-// 使用POSIX.1标准
-// 使用了strndup函数
+// 使用 POSIX.1 标准
+// 使用了 strndup 函数
 #define _POSIX_C_SOURCE 200809L
 
-// 规定是否使用hash桶的宏
-#define USE_HASH 0
+// 规定是否使用 hash 桶的宏
+#define USE_HASH 1
 
 #include<stdio.h>
 #include<stdlib.h>
@@ -33,10 +33,11 @@ typedef enum{
     TK_SEM,     //; Semicolon
     TK_VAR,     //变量
     TK_ASS,     //赋值符号
+    TK_RET,     //return
     TK_EOF      //终结符
 } TokenKind;
  
-// 单词结构体,typedef为结构体取别名
+// 单词结构体，typedef 为结构体取别名
 typedef struct Token Token;
 struct Token{
     TokenKind kind;     //类型
@@ -46,21 +47,21 @@ struct Token{
     int len;            //长度
 };
 
-// 交给预处理器判断编译rvcc.h中的哪个Obj
+// 交给预处理器判断编译 rvcc.h 中的哪个 Obj
 #if USE_HASH
-// hash_size 即为hash桶的个数
+// hash_size 即为 hash 桶的个数
 #define HASH_SIZE 13 
 typedef struct Obj Obj;  
 struct Obj{  
     char* Name;         //变量名
-    int value;          //哈希值，防止每次都调用hash函数
+    int value;          //哈希值，防止每次都调用 hash 函数
     struct Obj *next;   //下一个对象
-    int Offset;         //fp偏移量 
+    int Offset;         //fp 偏移量 
 };  
   
 typedef struct HashTable HashTable;
 struct HashTable{ 
-    // hash_size个Obj指针数组 
+    // hash_size 个 Obj 指针数组 
     Obj* objs[HASH_SIZE];  
     int size;  
 };  
@@ -75,23 +76,23 @@ typedef struct Obj Obj;
 struct Obj{
     Obj* Next;  //指向下一对象
     char* Name; //变量名
-    int Offset; //fp的偏移量
+    int Offset; //fp 的偏移量
 };
 
-// 方便之后对比，统一用上hash_table
+// 方便之后对比，统一用上 hash_table
 typedef struct HashTable HashTable;
 struct HashTable{
     Obj* locals;
 };
 #endif
 
-// AST(抽象语法树)节点
+// AST(抽象语法树) 节点
 typedef struct Node Node;
 struct Node{
     // 左右子节点
     Node* LNode;
     Node* RNode;
-    // 当前token
+    // 当前 token
     Token* token;
     Node* next;
     Obj *Var;
