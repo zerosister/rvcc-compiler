@@ -51,8 +51,9 @@ static void genCode_re(Node *root) {
     return;
   }
   if (token_root->kind == TK_RET) {
-    // 首先将跟在后面的 exprStmt 代码生成了
-    genCode_re(root->LNode);
+    // 首先将 exprStmt 代码生成了
+    // 但可能为 return 一个空语句，需要先判断
+    if (root->LNode) genCode_re(root->LNode);  
     // 进行汇编语句的跳转
     printf("\tj .L.return\n");
     return;

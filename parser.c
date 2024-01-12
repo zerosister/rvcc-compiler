@@ -11,7 +11,7 @@ HashTable* hashTable = NULL;
 // program = Compound
 // Compound = { stmt* }
 // stmt -> return exprStmt | exprStmt | Compund
-// exprStmt = expr ;
+// exprStmt = expr? ;
 // 暂时 expr = assign
 // Assign -> Equa Assign'
 // Assign' -> = Equa Assign | null
@@ -148,7 +148,8 @@ static Node* compound(Token** rest, Token* token) {
   // 当 token 为 "}" 时停下
   while ((*rest)->kind != TK_RBB) {
     cur->next = stmt(rest, *rest);
-    cur = cur->next;
+    // 由于可识别空语句 cur->next 可能为 NULL
+    if (cur->next) cur = cur->next; 
   }
   *rest = skip(*rest, "}");
   // 返回构建的 compound 结点
@@ -168,8 +169,14 @@ static Node* stmt(Token** rest, Token* token) {
   return exprStmt(rest, token);
 }
 
-// exprStmt = expr ;
+// exprStmt = expr? ;
 static Node* exprStmt(Token** rest, Token* token) {
+  if (token->kind == TK_SEM) {
+    // 表示为空语句，吸收 ;
+    *rest = token->next;
+    // 在 parser 中处理空语句，避免建立过多结点
+    return NULL;
+  }
   Node* root = assign(rest, token)->ptr;
   *rest = skip(*rest, ";");
   return root;
