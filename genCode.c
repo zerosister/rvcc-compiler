@@ -35,9 +35,20 @@ static void genAddr(Node *node) {
   error("Da Zhang Wei says: not a variable");
 }
 
+// 计数程序
+static int countIF(){
+  static int ifs = 0;
+  ifs += 1;
+  return ifs;
+}
+
 // 代码生成：遍历结点
 static void genCode_re(Node *root) {
   // 深度优先遍历 DFS left -> right -> root
+
+  // 如果为 NULL 则不生成任何代码
+  if (!root)  return;
+
   Token *token_root = root->token;
   if (token_root->kind == TK_NUM) {
     printf("\tli a0,%d\t#load num\n", token_root->val);
@@ -51,9 +62,9 @@ static void genCode_re(Node *root) {
     return;
   }
   if (token_root->kind == TK_RET) {
-    // 首先将 exprStmt 代码生成了
-    // 但可能为 return 一个空语句，需要先判断
-    if (root->LNode) genCode_re(root->LNode);  
+    // 首先将 exprStmt 代码生成
+    // 注意 exprStmt 可能会产生 NULL 结点
+    genCode_re(root->LNode);  
     // 进行汇编语句的跳转
     printf("\tj .L.return\n");
     return;
@@ -65,6 +76,20 @@ static void genCode_re(Node *root) {
       genCode_re(body);
       body = body->next;
     }
+    return;
+  }
+  if (token_root->kind == TK_IF) {
+    int if_cnt = countIF();
+    // 进入 if node 首先执行条件判断
+    genCode_re(root->body);
+    printf("\tbeqz a0, .L.else%d\n",if_cnt);
+    // 进行 if 成功分支
+    genCode_re(root->LNode);
+    printf("\tj .L.endIf%d\n",if_cnt);
+    printf("\t.L.else%d:\n",if_cnt);
+    // 进行 if 失败分支
+    genCode_re(root->RNode);
+    printf("\t.L.endIf%d:\n",if_cnt);
     return;
   }
 

@@ -9,10 +9,13 @@ HashTable* hashTable = NULL;
 // 性质：递归下降
 
 // program = Compound
-// Compound = { stmt* }
-// stmt -> return exprStmt | exprStmt | Compund
-// exprStmt = expr? ;
-// 暂时 expr = assign
+// Compound = { Stmt* }
+// Stmt -> return ExprStmt 
+//        | ExprStmt 
+//        | if '(' Expr ')' Stmt (else Stmt)? 
+//        | Compound
+// ExprStmt = Expr? ;
+// 暂时 Expr = assign
 // Assign -> Equa Assign'
 // Assign' -> = Equa Assign | null
 // Equa -> ! Equa | Rela Equa'
@@ -23,7 +26,7 @@ HashTable* hashTable = NULL;
 // Add' -> + Mul Add1' | - Mul Add1' | null
 // Mul -> Primary Mul'
 // Mul' -> * Primary Mul1' | / Primary Mul1' | null
-// Primary -> num | (expr)
+// Primary -> num | (Expr)
 
 static Node* compound(Token** rest, Token* token);
 static Node* stmt(Token** rest, Token* token);
@@ -133,6 +136,16 @@ static Node* mkBlockNode(Token* token, Node* body) {
   node->body = body;
   return node;
 }
+
+// 生成新的 IF 结点，用 LNode 存储条件成立时 Compound
+// 用 RNode 存储条件不成立时 Compound（此处先置为 NULL）, body 存储判断条件
+static Node* mkIfNode(Token* token, Node* cond, Node* yes) {
+  Node* node = mkLeaf(token);
+  node->body = cond;
+  node->LNode = yes;
+  return node;
+} 
+
 // 新建一个状态
 static Status* newStatus(StatusKind kind) {
   Status* status = calloc(1, sizeof(Status));
@@ -140,7 +153,7 @@ static Status* newStatus(StatusKind kind) {
   return status;
 }
 
-// Compound = { stmt* } 
+// Compound = { Stmt* } 
 static Node* compound(Token** rest, Token* token) {
   *rest = skip(token, "{");
   Node head = {};
@@ -156,20 +169,43 @@ static Node* compound(Token** rest, Token* token) {
   return mkBlockNode(token, head.next);
 }
 
-// stmt -> return exprStmt | exprStmt | Compund
+// Stmt -> return ExprStmt 
+//        | ExprStmt 
+//        | if '(' Expr ')' Stmt (else Stmt)? 
+//        | Compound
 static Node* stmt(Token** rest, Token* token) {
+  // Stmt -> return ExprStmt 
   if (token->kind == TK_RET) {
     *rest = token->next;
     Node* exprS = exprStmt(rest, *rest);
     return mkNode(token, exprS, NULL);
   }
+
+  // Stmt -> Compound
   if (token->kind == TK_LBB) {
     return compound(rest, *rest);
   }
+
+  // Stmt -> if '(' Expr ')' Stmt (else Stmt)?
+  if (token->kind == TK_IF) {
+    *rest = skip(token->next, "(");
+    Node* cond = expr(rest, *rest)->ptr;
+    *rest = skip(*rest, ")");
+    Node* yes = stmt(rest, *rest);
+    // 建立 if 结点
+    Node* ifStmt = mkIfNode(token, cond, yes);
+    if ((*rest)->kind == TK_ELS) {
+      *rest = (*rest)->next;
+      ifStmt->RNode = stmt(rest, *rest);
+    }
+    return ifStmt;
+  }
+
+  // Stmt -> ExprStmt
   return exprStmt(rest, token);
 }
 
-// exprStmt = expr? ;
+// ExprStmt = Expr? ;
 static Node* exprStmt(Token** rest, Token* token) {
   if (token->kind == TK_SEM) {
     // 表示为空语句，吸收 ;
@@ -182,7 +218,7 @@ static Node* exprStmt(Token** rest, Token* token) {
   return root;
 }
 
-// 暂时 expr = assign
+// 暂时 Expr = assign
 static Status* expr(Token** rest, Token* token) { return assign(rest, token); }
 
 // Assign -> Equa Assign'

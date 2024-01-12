@@ -142,6 +142,27 @@ static bool isIdent1(char c) {
 // [0-9a-zA-Z_]
 static bool isIdent2(char c) { return isIdent1(c) || ('0' <= c && c <= '9'); }
 
+// 判断是否为关键字
+static int specify_keyWord(Token* token){
+  static char* keyWords[] = {"return", "if", "else"};
+  // 指针数组大小 / 指针大小 = 指针个数
+  for (int i = 0; i < sizeof(keyWords) / sizeof(*keyWords); i++) {
+    if (equal(token, keyWords[i])) {
+      switch (i) {
+        case 0:
+          return TK_RET;
+        case 1:
+          return TK_IF;
+        case 2:
+          return TK_ELS;
+        default:
+          break;
+      }
+    }
+  }
+  return -1;
+}
+
 // 终结符解析
 Token* tokenize(char* p) {
   // 使用一个链表进行存储各个 Token
@@ -193,8 +214,10 @@ Token* tokenize(char* p) {
       }
       cur->next = newToken(TK_VAR, 0, startloc, p - startloc);
       // 此时检查是否为关键字
-      if (strncmp("return", cur->next->loc, cur->next->len) == 0) {
-        cur->next->kind = TK_RET;
+      int keyWord = specify_keyWord(cur->next);
+      if (keyWord > -1) {
+        // 识别为关键字
+        cur->next->kind = keyWord;
       }
       cur = cur->next;
       continue;
