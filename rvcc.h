@@ -34,6 +34,8 @@ typedef enum{
     TK_VAR,     //变量
     TK_ASS,     //赋值符号
     TK_RET,     //return
+    TK_LBB,     //Left Big Brakect
+    TK_RBB,     //Right Big Brakect
     TK_EOF      //终结符
 } TokenKind;
  
@@ -92,10 +94,10 @@ struct Node{
     // 左右子节点
     Node* LNode;
     Node* RNode;
-    // 当前 token
-    Token* token;
+    Token* token; // 当前 token
     Node* next;
-    Obj *Var;
+    Node* body; // 若为 Compound 结点，对应的语句链表
+    Obj *Var;   // 对应变量
 };
 
 // 表示状态的种类

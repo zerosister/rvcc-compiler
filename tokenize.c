@@ -95,6 +95,10 @@ static int specify_puntc(char* p) {
         return TK_LST;
     case ';':
       return TK_SEM;
+    case '{':
+      return TK_LBB;
+    case '}':
+      return TK_RBB;
     default:
       errorAt(p, "Darling T.T ~~ I can't deal with this punctuation");
   }

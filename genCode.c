@@ -57,6 +57,15 @@ static void genCode_re(Node *root) {
     printf("\tj .L.return\n");
     return;
   }
+  if (token_root->kind == TK_LBB) {
+    // 表明进入 compound, 需要遍历其 body
+    Node* body = root->body;
+    while (body) {
+      genCode_re(body);
+      body = body->next;
+    }
+    return;
+  }
 
   // 当前为操作符，递归遍历
   if (!root->LNode)
@@ -172,7 +181,7 @@ static void assignVarOffsets(Function *prog) {
 
 void genCode(Function *prog) {
   // 每条语句一个结点，需要遍历每条语句
-  Node *stmt = prog->Body;
+  Node *body = prog->Body;
   assignVarOffsets(prog);
   printf("\t.global main\n");
   printf("main:\n");
@@ -193,9 +202,9 @@ void genCode(Function *prog) {
   // 将 fp 置为当前 sp 值
   printf("\tmv fp,sp\n");
   printf("\taddi sp,sp,-%d\n", prog->StackSize);
-  while (stmt) {
-    genCode_re(stmt);
-    stmt = stmt->next;
+  while (body) {
+    genCode_re(body);
+    body = body->next;
   }
 
   // return 语句生成

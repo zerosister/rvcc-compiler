@@ -8,9 +8,10 @@ HashTable* hashTable = NULL;
 // so，回归课程中方法
 // 性质：递归下降
 
-// program = stmt*
-// stmt -> return exprStmt | exprStmt
-// exprStmt = expr ";"
+// program = Compound
+// Compound = { stmt* }
+// stmt -> return exprStmt | exprStmt | Compund
+// exprStmt = expr ;
 // 暂时 expr = assign
 // Assign -> Equa Assign'
 // Assign' -> = Equa Assign | null
@@ -24,6 +25,7 @@ HashTable* hashTable = NULL;
 // Mul' -> * Primary Mul1' | / Primary Mul1' | null
 // Primary -> num | (expr)
 
+static Node* compound(Token** rest, Token* token);
 static Node* stmt(Token** rest, Token* token);
 static Node* exprStmt(Token** rest, Token* token);
 static Status* expr(Token** rest, Token* token);
@@ -75,7 +77,7 @@ static Obj* findVar(Token* token) {
   }
   Obj* cmp = locals->Next;
   while (cmp && !(startsWith(token->loc, cmp->Name) &&
-                  (token->len == strlen(cmp->Name)))) {
+      (token->len == strlen(cmp->Name)))) {
     cmp = cmp->Next;
   }
   if (cmp && startsWith(token->loc, cmp->Name) &&
@@ -125,6 +127,12 @@ static Node* mkVarNode(Token* token) {
   return node;
 }
 
+// 生成新的块结点，其中 token 为 {, body 为 {} 内部语句
+static Node* mkBlockNode(Token* token, Node* body) {
+  Node* node = mkLeaf(token);
+  node->body = body;
+  return node;
+}
 // 新建一个状态
 static Status* newStatus(StatusKind kind) {
   Status* status = calloc(1, sizeof(Status));
@@ -132,22 +140,42 @@ static Status* newStatus(StatusKind kind) {
   return status;
 }
 
-// 支持表达式语句或 return 语句
+// Compound = { stmt* } 
+static Node* compound(Token** rest, Token* token) {
+  *rest = skip(token, "{");
+  Node head = {};
+  Node* cur = &head;
+  // 当 token 为 "}" 时停下
+  while ((*rest)->kind != TK_RBB) {
+    cur->next = stmt(rest, *rest);
+    cur = cur->next;
+  }
+  *rest = skip(*rest, "}");
+  // 返回构建的 compound 结点
+  return mkBlockNode(token, head.next);
+}
+
+// stmt -> return exprStmt | exprStmt | Compund
 static Node* stmt(Token** rest, Token* token) {
   if (token->kind == TK_RET) {
     *rest = token->next;
     Node* exprS = exprStmt(rest, *rest);
     return mkNode(token, exprS, NULL);
   }
+  if (token->kind == TK_LBB) {
+    return compound(rest, *rest);
+  }
   return exprStmt(rest, token);
 }
 
+// exprStmt = expr ;
 static Node* exprStmt(Token** rest, Token* token) {
   Node* root = assign(rest, token)->ptr;
   *rest = skip(*rest, ";");
   return root;
 }
 
+// 暂时 expr = assign
 static Status* expr(Token** rest, Token* token) { return assign(rest, token); }
 
 // Assign -> Equa Assign'
@@ -463,19 +491,13 @@ static Status* primary(Token** rest, Token* token) {
   return NULL;
 }
 
-// program = stmt*
+// program = compound
 Function* parse(Token** rest, Token* token) {
-  // 程序为语句链表
-  Node head = {};
-  Node* cur = &head;
-  while ((*rest)->kind != TK_EOF) {
-    cur->next = stmt(rest, *rest);
-    cur = cur->next;
-  }
+  Node* body = compound(rest, token);
 
   // 函数体存储语句的 AST，locals 存储变量
   Function* prog = calloc(1, sizeof(Function));
-  prog->Body = head.next;
+  prog->Body = body;
   prog->Locals = getHashTable();
   return prog;
 }
