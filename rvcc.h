@@ -39,6 +39,8 @@ typedef enum {
   TK_RBB,  // Right Big Brakect
   TK_IF,   // if
   TK_ELS,  // else
+  TK_FOR,  // for
+  TK_WHI,  // while
   TK_EOF   //终结符
 } TokenKind;
 
@@ -100,6 +102,7 @@ struct Node {
   Token* token;  // 当前 token
   Node* next;
   Node* body;  // 若为 Compound 结点，对应的语句链表
+  Node* init; // 存储初始化结点
   Obj* Var;    // 对应变量
 };
 

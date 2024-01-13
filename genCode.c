@@ -36,10 +36,10 @@ static void genAddr(Node *node) {
 }
 
 // 计数程序
-static int countIF(){
-  static int ifs = 0;
-  ifs += 1;
-  return ifs;
+static int count(){
+  static int cnt = 0;
+  cnt += 1;
+  return cnt;
 }
 
 // 代码生成：遍历结点
@@ -78,21 +78,53 @@ static void genCode_re(Node *root) {
     }
     return;
   }
+  //  Node 使用信息详见 parser.c mkIfNode 函数
   if (token_root->kind == TK_IF) {
-    int if_cnt = countIF();
+    int if_cnt = count();
     // 进入 if node 首先执行条件判断
     genCode_re(root->body);
-    printf("\tbeqz a0, .L.else%d\n",if_cnt);
+    printf("\tbeqz a0, .L.else%d\n", if_cnt);
     // 进行 if 成功分支
     genCode_re(root->LNode);
-    printf("\tj .L.endIf%d\n",if_cnt);
-    printf("\t.L.else%d:\n",if_cnt);
+    printf("\tj .L.endIf%d\n", if_cnt);
+    printf("\t.L.else%d:\n", if_cnt);
     // 进行 if 失败分支
     genCode_re(root->RNode);
-    printf("\t.L.endIf%d:\n",if_cnt);
+    printf("\t.L.endIf%d:\n", if_cnt);
+    return;
+  }
+  
+  // Node 使用信息详见 parser.c mkForNode 函数
+  if (token_root->kind == TK_FOR) {
+    int for_cnt = count();
+    // 首先执行初始化语句
+    genCode_re(root->init);
+    // 循环开始标签
+    printf("\t.L.begin%d:\n", for_cnt);
+    // 进行条件判断
+    genCode_re(root->body);
+    printf("\tbeqz a0, .L.end%d\n", for_cnt);
+    // 满足条件，执行相应语句
+    genCode_re(root->RNode);
+    // 执行递增语句
+    genCode_re(root->LNode);
+    printf("\tj .L.begin%d\n", for_cnt);
+    printf("\t.L.end%d:\n", for_cnt);
     return;
   }
 
+  if (token_root->kind == TK_WHI) {
+    int whi_cnt = count();
+    printf("\t.L.begin%d:\n", whi_cnt);
+    // 执行条件判断
+    genCode_re(root->body);
+    printf("\t beqz a0, .L.end%d\n", whi_cnt);
+    // 满足条件，执行相应语句
+    genCode_re(root->RNode);
+    printf("\t j .L.begin%d\n", whi_cnt);
+    printf("\t.L.end%d:\n", whi_cnt);
+    return;
+  }
   // 当前为操作符，递归遍历
   if (!root->LNode)
     errorTok(token_root, "Juliet~,An operand is losed when generating code~");

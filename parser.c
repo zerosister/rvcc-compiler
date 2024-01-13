@@ -12,7 +12,9 @@ HashTable* hashTable = NULL;
 // Compound = { Stmt* }
 // Stmt -> return ExprStmt 
 //        | ExprStmt 
-//        | if '(' Expr ')' Stmt (else Stmt)? 
+//        | if '(' Expr ')' Stmt (else Stmt)?
+//        | for '(' ExprStmt Expr? ; Expr? ')' Stmt
+//        | "while" "(" expr ")" stmt
 //        | Compound
 // ExprStmt = Expr? ;
 // 暂时 Expr = assign
@@ -146,6 +148,25 @@ static Node* mkIfNode(Token* token, Node* cond, Node* yes) {
   return node;
 } 
 
+// 生成新的 For 结点，init 存储初始化结点，Body 存储条件结点，
+// LNode 存储递增结点，RNode 存储条件成立执行结点
+static Node* mkForNode(Token* token, Node* init, Node* cond, Node* incre, Node* exe) {
+  Node* node = mkLeaf(token);
+  node->init = init;
+  node->body = cond;
+  node->LNode = incre;
+  node->RNode = exe;
+  return node;
+}
+
+// 生成新的 While 结点，Body 存储条件结点，RNode 存储条件成立执行结点
+static Node* mkWhileNode(Token* token, Node* cond, Node* exe) {
+  Node* node = mkLeaf(token);
+  node->body = cond;
+  node->RNode = exe;
+  return node;
+}
+
 // 新建一个状态
 static Status* newStatus(StatusKind kind) {
   Status* status = calloc(1, sizeof(Status));
@@ -172,6 +193,8 @@ static Node* compound(Token** rest, Token* token) {
 // Stmt -> return ExprStmt 
 //        | ExprStmt 
 //        | if '(' Expr ')' Stmt (else Stmt)? 
+//        | for '(' ExprStmt Expr? ; Expr? ')' Stmt
+//        | "while" "(" expr ")" stmt
 //        | Compound
 static Node* stmt(Token** rest, Token* token) {
   // Stmt -> return ExprStmt 
@@ -199,6 +222,37 @@ static Node* stmt(Token** rest, Token* token) {
       ifStmt->RNode = stmt(rest, *rest);
     }
     return ifStmt;
+  }
+
+  // Stmt -> for '(' ExprStmt Expr? ; Expr? ')' Stmt
+  if (token->kind == TK_FOR) {
+    *rest = skip(token->next, "(");
+    Node* init = exprStmt(rest, *rest);
+    Node* cond = NULL;
+    if ((*rest)->kind != TK_SEM) {
+      cond = expr(rest, *rest)->ptr;
+    }
+    // 吸收循环条件语句分号
+    *rest = skip(*rest, ";"); 
+    Node* incre = NULL;
+    if ((*rest)->kind != TK_RBR) {
+      incre = expr(rest, *rest)->ptr;
+    }
+    // 吸收右括号
+    *rest = skip(*rest, ")");
+    Node* exe = stmt(rest, *rest);
+    Node* forStmt = mkForNode(token, init, cond, incre, exe);
+    return forStmt;
+  }
+  
+  // Stmt -> "while" "(" expr ")" stmt
+  if (token->kind == TK_WHI) {
+    *rest = skip(token->next, "(");
+    Node* cond = expr(rest, *rest)->ptr;
+    *rest = skip(*rest, ")");
+    Node* exe = stmt(rest, *rest);
+    Node* whileStmt = mkWhileNode(token, cond, exe);
+    return whileStmt;
   }
 
   // Stmt -> ExprStmt
