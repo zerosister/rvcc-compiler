@@ -99,6 +99,8 @@ static int specify_puntc(char* p) {
       return TK_LBB;
     case '}':
       return TK_RBB;
+    case '&':
+      return TK_ADDR;
     default:
       errorAt(p, "Darling T.T ~~ I can't deal with this punctuation");
   }
@@ -143,7 +145,7 @@ static bool isIdent1(char c) {
 static bool isIdent2(char c) { return isIdent1(c) || ('0' <= c && c <= '9'); }
 
 // 判断是否为关键字
-static int specify_keyWord(Token* token){
+static int specify_keyWord(Token* token) {
   static char* keyWords[] = {"return", "if", "else", "for", "while"};
   // 指针数组大小 / 指针大小 = 指针个数
   for (int i = 0; i < sizeof(keyWords) / sizeof(*keyWords); i++) {

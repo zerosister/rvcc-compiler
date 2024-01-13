@@ -17,31 +17,33 @@
 /************************ 数据结构声明 *************************/
 //单词种别
 typedef enum {
-  TK_ADD,  // +
-  TK_SUB,  // -
-  TK_MUL,  // *
-  TK_DIV,  // '/'
-  TK_LBR,  // '('
-  TK_RBR,  // ')'
-  TK_NUM,  //数字
-  TK_NOT,  //!
-  TK_DEQ,  //== Double EQual
-  TK_NEQ,  //!= Not EQual
-  TK_BGT,  //> BiGger Than
-  TK_BGE,  //>= BiGger and Equal
-  TK_LST,  //< LeSs Than
-  TK_LSE,  //<= LeSs and Equal
-  TK_SEM,  //; Semicolon
-  TK_VAR,  //变量
-  TK_ASS,  //赋值符号
-  TK_RET,  // return
-  TK_LBB,  // Left Big Brakect
-  TK_RBB,  // Right Big Brakect
-  TK_IF,   // if
-  TK_ELS,  // else
-  TK_FOR,  // for
-  TK_WHI,  // while
-  TK_EOF   //终结符
+  TK_ADD,    // +
+  TK_SUB,    // -
+  TK_MUL,    // *
+  TK_DIV,    // '/'
+  TK_LBR,    // '('
+  TK_RBR,    // ')'
+  TK_NUM,    //数字
+  TK_NOT,    //!
+  TK_DEQ,    //== Double EQual
+  TK_NEQ,    //!= Not EQual
+  TK_BGT,    //> BiGger Than
+  TK_BGE,    //>= BiGger and Equal
+  TK_LST,    //< LeSs Than
+  TK_LSE,    //<= LeSs and Equal
+  TK_SEM,    //; Semicolon
+  TK_VAR,    //变量
+  TK_ASS,    //赋值符号
+  TK_RET,    // return
+  TK_LBB,    // Left Big Brakect
+  TK_RBB,    // Right Big Brakect
+  TK_IF,     // if
+  TK_ELS,    // else
+  TK_FOR,    // for
+  TK_WHI,    // while
+  TK_DEREF,  // * 解引用
+  TK_ADDR,   // & 取指符
+  TK_EOF     //终结符
 } TokenKind;
 
 // 单词结构体，typedef 为结构体取别名
@@ -102,7 +104,7 @@ struct Node {
   Token* token;  // 当前 token
   Node* next;
   Node* body;  // 若为 Compound 结点，对应的语句链表
-  Node* init; // 存储初始化结点
+  Node* init;  // 存储初始化结点
   Obj* Var;    // 对应变量
 };
 
@@ -140,7 +142,7 @@ struct Function {
 
 /************************ 函数声明 *************************/
 // 报错信息
-void verrorAt(char* loc,char* Fmt,va_list VA);
+void verrorAt(char* loc, char* Fmt, va_list VA);
 void errorAt(char* loc, char* Fmt, ...);
 void errorTok(Token* token, char* Fmt, ...);
 void error(char* Fmt, ...);

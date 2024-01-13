@@ -10,8 +10,8 @@ HashTable* hashTable = NULL;
 
 // program = Compound
 // Compound = { Stmt* }
-// Stmt -> return ExprStmt 
-//        | ExprStmt 
+// Stmt -> return ExprStmt
+//        | ExprStmt
 //        | if '(' Expr ')' Stmt (else Stmt)?
 //        | for '(' ExprStmt Expr? ; Expr? ')' Stmt
 //        | "while" "(" expr ")" stmt
@@ -28,7 +28,7 @@ HashTable* hashTable = NULL;
 // Add' -> + Mul Add1' | - Mul Add1' | null
 // Mul -> Primary Mul'
 // Mul' -> * Primary Mul1' | / Primary Mul1' | null
-// Primary -> num | (Expr)
+// Primary -> num | (Expr) | + Primary | - Primary | * Primary | & Primary
 
 static Node* compound(Token** rest, Token* token);
 static Node* stmt(Token** rest, Token* token);
@@ -82,7 +82,7 @@ static Obj* findVar(Token* token) {
   }
   Obj* cmp = locals->Next;
   while (cmp && !(startsWith(token->loc, cmp->Name) &&
-      (token->len == strlen(cmp->Name)))) {
+                  (token->len == strlen(cmp->Name)))) {
     cmp = cmp->Next;
   }
   if (cmp && startsWith(token->loc, cmp->Name) &&
@@ -146,11 +146,12 @@ static Node* mkIfNode(Token* token, Node* cond, Node* yes) {
   node->body = cond;
   node->LNode = yes;
   return node;
-} 
+}
 
 // 生成新的 For 结点，init 存储初始化结点，Body 存储条件结点，
 // LNode 存储递增结点，RNode 存储条件成立执行结点
-static Node* mkForNode(Token* token, Node* init, Node* cond, Node* incre, Node* exe) {
+static Node* mkForNode(Token* token, Node* init, Node* cond, Node* incre,
+                       Node* exe) {
   Node* node = mkLeaf(token);
   node->init = init;
   node->body = cond;
@@ -174,7 +175,7 @@ static Status* newStatus(StatusKind kind) {
   return status;
 }
 
-// Compound = { Stmt* } 
+// Compound = { Stmt* }
 static Node* compound(Token** rest, Token* token) {
   *rest = skip(token, "{");
   Node head = {};
@@ -183,21 +184,21 @@ static Node* compound(Token** rest, Token* token) {
   while ((*rest)->kind != TK_RBB) {
     cur->next = stmt(rest, *rest);
     // 由于可识别空语句 cur->next 可能为 NULL
-    if (cur->next) cur = cur->next; 
+    if (cur->next) cur = cur->next;
   }
   *rest = skip(*rest, "}");
   // 返回构建的 compound 结点
   return mkBlockNode(token, head.next);
 }
 
-// Stmt -> return ExprStmt 
-//        | ExprStmt 
-//        | if '(' Expr ')' Stmt (else Stmt)? 
+// Stmt -> return ExprStmt
+//        | ExprStmt
+//        | if '(' Expr ')' Stmt (else Stmt)?
 //        | for '(' ExprStmt Expr? ; Expr? ')' Stmt
 //        | "while" "(" expr ")" stmt
 //        | Compound
 static Node* stmt(Token** rest, Token* token) {
-  // Stmt -> return ExprStmt 
+  // Stmt -> return ExprStmt
   if (token->kind == TK_RET) {
     *rest = token->next;
     Node* exprS = exprStmt(rest, *rest);
@@ -233,7 +234,7 @@ static Node* stmt(Token** rest, Token* token) {
       cond = expr(rest, *rest)->ptr;
     }
     // 吸收循环条件语句分号
-    *rest = skip(*rest, ";"); 
+    *rest = skip(*rest, ";");
     Node* incre = NULL;
     if ((*rest)->kind != TK_RBR) {
       incre = expr(rest, *rest)->ptr;
@@ -244,9 +245,11 @@ static Node* stmt(Token** rest, Token* token) {
     Node* forStmt = mkForNode(token, init, cond, incre, exe);
     return forStmt;
   }
-  
+
   // Stmt -> "while" "(" expr ")" stmt
   if (token->kind == TK_WHI) {
+    // 复用 for 循环
+    token->kind = TK_FOR;
     *rest = skip(token->next, "(");
     Node* cond = expr(rest, *rest)->ptr;
     *rest = skip(*rest, ")");
@@ -285,6 +288,9 @@ static Status* assign(Token** rest, Token* token) {
     case TK_SUB:
     case TK_NOT:
     case TK_VAR:
+    // 此时识别的 '*' 应该认为是解引用
+    case TK_MUL:
+    case TK_ADDR:
       // Assign -> Equa Assign'
       Status* equa = equation(rest, token);
       Status* ass_P = assign_Prime(rest, *rest, equa->ptr);
@@ -326,6 +332,9 @@ static Status* equation(Token** rest, Token* token) {
     case TK_SUB:
     // 新增变量等价于 NUM
     case TK_VAR:
+    // 此时识别的 '*' 应该认为是解引用
+    case TK_MUL:
+    case TK_ADDR:
       // Equa -> Rela Equa'
       Status* relation = rela(rest, token);
       Status* equa_P = equation_Prime(rest, *rest, relation->ptr);
@@ -377,6 +386,9 @@ static Status* rela(Token** rest, Token* token) {
     case TK_ADD:
     case TK_SUB:
     case TK_VAR:
+    // 此时识别的 '*' 应该认为是解引用
+    case TK_MUL:
+    case TK_ADDR:
       // Rela -> E Rela'
       Status* addition = add(rest, token);
       Status* relat_P = rela_Prime(rest, *rest, addition->ptr);
@@ -429,6 +441,9 @@ static Status* add(Token** rest, Token* token) {
     case TK_ADD:
     case TK_SUB:
     case TK_VAR:
+    // 此时识别的 '*' 应该认为是解引用
+    case TK_MUL:
+    case TK_ADDR:
       // 递归进入 Mul 识别
       Status* mult = mul(rest, token);
       // 传递继承属性到 Add'识别
@@ -490,6 +505,9 @@ static Status* mul(Token** rest, Token* token) {
     case TK_ADD:
     case TK_SUB:
     case TK_VAR:
+    // 此时识别的 '*' 应该认为是解引用
+    case TK_MUL:
+    case TK_ADDR:
       Status* prim = primary(rest, token);
       Status* mult_P = mul_Prime(rest, *rest, prim->ptr);
       mult->ptr = mult_P->system;
@@ -540,7 +558,7 @@ static Status* mul_Prime(Token** rest, Token* token, Node* inherit) {
   return NULL;
 }
 
-// Primary -> num | (Expr) | + Primary | - Primary
+// Primary -> num | (Expr) | + Primary | - Primary | * Primary | & Primary
 static Status* primary(Token** rest, Token* token) {
   Status* prim = newStatus(ST_Primary);
   switch (token->kind) {
@@ -579,6 +597,17 @@ static Status* primary(Token** rest, Token* token) {
       // 识别到变量
       prim->ptr = mkVarNode(token);
       *rest = token->next;
+      return prim;
+    case TK_MUL:
+      // '*' 一直作为 TK_MUL 传递到此，实际为解引用操作
+      token->kind = TK_DEREF;
+      *rest = token->next;
+      prim->ptr = mkNode(token, primary(rest, *rest)->ptr, NULL);
+      return prim;
+    case TK_ADDR:
+      // '&' 操作
+      *rest = token->next;
+      prim->ptr = mkNode(token, primary(rest, *rest)->ptr, NULL);
       return prim;
     default:
       break;
