@@ -3,13 +3,21 @@
 // 符号表，hash_Table 实现形式
 HashTable* hashTable = NULL;
 
+// 自行构建 token 变量
+static Token multiplyToken = {TK_MUL};
+static Token divisionToken = {TK_DIV};
+
 // 非递归的语法分析，发现 LL(1) 文法用栈其实无法解决本质问题
 // 因为仅仅为生成产生式时有用，附加语义动作则需要在 parse 中同时进行
 // so，回归课程中方法
 // 性质：递归下降
 
 // program = Compound
-// Compound = { Stmt* }
+// Compound = { (Decla | Stmt)* }
+// Decla = 
+//        Declspec (Declarator ('=' expr)? (',' Declarator ('=' expr)?)*)? ';'
+// Declspec: 数据类型
+// Declarator: '*'* ident  可以为多重指针
 // Stmt -> return ExprStmt
 //        | ExprStmt
 //        | if '(' Expr ')' Stmt (else Stmt)?
@@ -31,6 +39,7 @@ HashTable* hashTable = NULL;
 // Primary -> num | (Expr) | + Primary | - Primary | * Primary | & Primary
 
 static Node* compound(Token** rest, Token* token);
+static Node* decla(Token** rest, Token* token);
 static Node* stmt(Token** rest, Token* token);
 static Node* exprStmt(Token** rest, Token* token);
 static Status* expr(Token** rest, Token* token);
@@ -128,7 +137,8 @@ static Node* mkLeaf(Token* token) {
 // 生成新的变量结点
 static Node* mkVarNode(Token* token) {
   Node* node = mkLeaf(token);
-  node->Var = newVar(token);
+  // 变为符号表后此处有更改，变为 find
+  node->Var = findVar(token);
   return node;
 }
 
@@ -168,6 +178,52 @@ static Node* mkWhileNode(Token* token, Node* cond, Node* exe) {
   return node;
 }
 
+// 生成指定数据类型大小的 num Node
+static Node* mkNum(int val) {
+  // 此处需要 calloc，因为不在 parser.c 时内存会无效
+  // Token token = {TK_NUM, NULL, val, NULL, 0};
+  Token* token = calloc(1,sizeof(Token));
+  token->kind = TK_NUM;
+  token->val = val;
+  return mkLeaf(token); 
+}
+
+// 生成新的 Add 或 Sub 结点，用于区别数值，指针计算
+static Node* mkAddNode(Token* token, Node* left, Node* right) {
+  // 为左右结点生成类型
+  addType(left);
+  addType(right);
+  
+  // num +|- num
+  if (isInteger(left->ty) && isInteger(right->ty)) 
+    return mkNode(token, left, right);
+  
+  // num + ptr 转换为 ptr + num
+  if (isInteger(left->ty) && isPtr(right->ty)) {
+    Node* tmp = left;
+    left = right;
+    right = tmp;
+  }
+
+  // ptr +|- num
+  if (isPtr(left->ty) && isInteger(right->ty)) {
+    // 使用了自带的 token
+    right = mkNode(&multiplyToken, right, mkNum(8));
+    addType(right);
+    return mkNode(token, left, right);
+    // node->ty = left->ty;
+  }
+
+  // ptr - ptr 返回两指针间有多少元素
+  if (isPtr(left->ty) && isPtr(right->ty) && token->kind == TK_SUB) {
+    Node* node = mkNode(token, left, right);
+    node->ty = TypeInt;
+    return mkNode(&divisionToken, node, mkNum(8));
+  }
+
+  errorTok(token, "Beckham~,operands invalid~~");
+}
+
 // 新建一个状态
 static Status* newStatus(StatusKind kind) {
   Status* status = calloc(1, sizeof(Status));
@@ -175,20 +231,121 @@ static Status* newStatus(StatusKind kind) {
   return status;
 }
 
-// Compound = { Stmt* }
+// Compound = { (Decla | Stmt)* }
 static Node* compound(Token** rest, Token* token) {
   *rest = skip(token, "{");
   Node head = {};
-  Node* cur = &head;
+  Node *cur = &head;
   // 当 token 为 "}" 时停下
   while ((*rest)->kind != TK_RBB) {
-    cur->next = stmt(rest, *rest);
+    switch ((*rest)->kind) {
+      // 当为关键字时， => Decla
+      case TK_INT:
+        cur->next = decla(rest, *rest);
+        // 此处可能不止一个语句
+        while (cur->next) {
+          cur = cur->next;
+          addType(cur);
+        }
+        break;
+      default:
+        // => Stmt 
+        cur->next = stmt(rest, *rest);
+        break;
+    }
     // 由于可识别空语句 cur->next 可能为 NULL
-    if (cur->next) cur = cur->next;
+    if (cur->next) {
+      cur = cur->next;
+      addType(cur);
+    }
   }
   *rest = skip(*rest, "}");
   // 返回构建的 compound 结点
   return mkBlockNode(token, head.next);
+}
+
+// Declspec: 数据类型
+static Type* declspec(Token** rest, Token* token) {
+  // 消耗掉特定关键字
+  switch (token->kind) {
+    case TK_INT:
+      // 吸收 int
+      *rest = (*rest)->next;
+      return TypeInt;
+    default:
+      errorTok(token, "Little Dragon~, data structure not defined~");
+  }  
+}
+
+// Declarator: '*'* ident Declarator 可以为多重指针
+static Node* declarator(Token** rest, Token* token, Type* ty) {
+  // 此时便加入符号表，此后的变量出现都只用在符号表中查找
+  while ((*rest)->kind == TK_MUL) {
+    // Delcaration 中即使修改 * TK_MUL -> TK_DEREF 也无意义，因为该 token 此后不用
+    ty = pointerTo(ty);
+    *rest = (*rest)->next;
+  }
+  if ((*rest)->kind != TK_VAR) {
+    errorTok(*rest, "Pineapple~, We need a variable here~");
+  }
+  Obj* obj = newVar(*rest);
+  obj->ty = ty;
+  Node* node = mkLeaf(*rest);
+  node->Var = obj;
+  // 将变量 token 消耗
+  *rest = (*rest)->next;
+  return node;
+}
+
+// Decla = 
+//        Declspec (Declarator ('=' expr)? (',' Declarator ('=' expr)?)*)? ';'
+// 若为空语句，或者仅仅声明了变量，没有语句进行赋初值，则返回 NULL
+static Node* decla(Token** rest, Token* token) {
+  Type* ty = declspec(rest, token);
+  Node head = {};
+  // cur 用于表示当前 变量声明链表 中最后一个
+  Node* cur = &head;
+  switch ((*rest)->kind) {
+    case TK_SEM:
+      // 空语句 吸收
+      *rest = (*rest)->next;
+      return NULL;
+    case TK_VAR:
+    case TK_MUL:
+      // 为变量，将此前的数据类型传入
+      Node* declaration = declarator(rest, *rest, ty);
+      if ((*rest)->kind == TK_ASS) {
+        // 若定义时同时有赋值
+        token = *rest;
+        // 吸收 =
+        *rest = (*rest)->next;
+        declaration = mkNode(token, declaration, expr(rest, *rest)->ptr);
+        // 加入赋初值语句链表中
+        cur->next = declaration;
+        cur = cur->next;
+      }
+      // 若有 ',' 则还需要继续定义变量
+      while ((*rest)->kind == TK_COM) {
+        *rest = (*rest)->next;
+        // 再次用 declaration 获取变量
+        declaration = declarator(rest, *rest, ty);
+        if ((*rest)->kind == TK_ASS) {
+          // 若定义时同时有赋值
+          token = *rest;
+          // 吸收 =
+          *rest = (*rest)->next;
+          declaration = mkNode(token, declaration, expr(rest, *rest)->ptr);
+          // 加入赋初值语句链表中
+          cur->next = declaration;
+          cur = cur->next;
+        }
+      }
+      *rest = skip(*rest, ";");
+      return head.next;
+    default:
+      errorTok(*rest, "Hazard~,Not a variable (>·_·<)");
+  }
+  Node* variable = declarator(rest, *rest, ty);
 }
 
 // Stmt -> return ExprStmt
@@ -201,7 +358,7 @@ static Node* stmt(Token** rest, Token* token) {
   // Stmt -> return ExprStmt
   if (token->kind == TK_RET) {
     *rest = token->next;
-    Node* exprS = exprStmt(rest, *rest);
+    Node *exprS = exprStmt(rest, *rest);
     return mkNode(token, exprS, NULL);
   }
 
@@ -213,7 +370,7 @@ static Node* stmt(Token** rest, Token* token) {
   // Stmt -> if '(' Expr ')' Stmt (else Stmt)?
   if (token->kind == TK_IF) {
     *rest = skip(token->next, "(");
-    Node* cond = expr(rest, *rest)->ptr;
+    Node *cond = expr(rest, *rest)->ptr;
     *rest = skip(*rest, ")");
     Node* yes = stmt(rest, *rest);
     // 建立 if 结点
@@ -315,6 +472,7 @@ static Status* assign_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_RBR:
     case TK_SEM:
     case TK_EOF:
+    case TK_COM:
       // Assign' -> = null
       ass_P->system = inherit;
       return ass_P;
@@ -366,6 +524,7 @@ static Status* equation_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_RBR:
     case TK_SEM:
     case TK_ASS:
+    case TK_COM:
     case TK_EOF:  //加入是为了防止编译器在此时即报错，需要等到 expression
                   //需要;时再报错
       // Equa' -> null
@@ -420,6 +579,7 @@ static Status* rela_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_SEM:
     case TK_RBR:
     case TK_ASS:
+    case TK_COM:
     case TK_EOF:  //加入是为了防止编译器在此时即报错，需要等到 expression
                   //需要;时再报错
       // Rela' -> null
@@ -468,7 +628,7 @@ static Status* add_Prime(Token** rest, Token* token, Node* inherit) {
       Status* mult = mul(rest, *rest);
       // 此时 mknode 需要用到的 token 为 + or -
       Status* add_P2 =
-          add_Prime(rest, *rest, mkNode(token, inherit, mult->ptr));
+          add_Prime(rest, *rest, mkAddNode(token, inherit, mult->ptr));
       add_P->system = add_P2->system;
       return add_P;
     case TK_RBR:
@@ -480,6 +640,7 @@ static Status* add_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_NEQ:
     case TK_DEQ:
     case TK_ASS:
+    case TK_COM:
     case TK_EOF:  //加入是为了防止编译器在此时即报错，需要等到 expression
                   //需要;时再报错
       // Follow(E') 下 Add' -> null
@@ -544,6 +705,7 @@ static Status* mul_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_ADD:
     case TK_SUB:
     case TK_ASS:
+    case TK_COM:
     case TK_EOF:  //加入是为了防止编译器在此时即报错，需要等到 expression
                   //需要;时再报错
       // printf("Mul' -> null\n");

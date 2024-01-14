@@ -43,6 +43,8 @@ typedef enum {
   TK_WHI,    // while
   TK_DEREF,  // * 解引用
   TK_ADDR,   // & 取指符
+  TK_INT,    // int
+  TK_COM,    // ，
   TK_EOF     //终结符
 } TokenKind;
 
@@ -56,6 +58,23 @@ struct Token {
   int len;         //长度
 };
 
+// 类型种类
+typedef enum {
+  TY_INT, // int 整型
+  TY_PTR // 指针
+} TypeKind;
+
+// 结点或变量类型
+typedef struct Type Type;
+struct Type {
+  TypeKind tyKind;  // 哪种类型
+  Type *base;         // 若类型为指针则表示指针指向的数据类型
+  Type *name;         // 为之后自定义结构体做准备
+};
+
+// 声明全局变量，在 type.c 中定义
+extern Type *TypeInt;
+
 // 交给预处理器判断编译 rvcc.h 中的哪个 Obj
 #if USE_HASH
 // hash_size 即为 hash 桶的个数
@@ -66,13 +85,13 @@ struct Obj {
   int value;         //哈希值，防止每次都调用 hash 函数
   struct Obj* next;  //下一个对象
   int Offset;        // fp 偏移量
+  Type *ty;          // 数据类型
 };
 
 typedef struct HashTable HashTable;
 struct HashTable {
-  // hash_size 个 Obj 指针数组
-  Obj* objs[HASH_SIZE];
-  int size;
+  Obj* objs[HASH_SIZE];   // hash_size 个 Obj 指针数组
+  int size;               // 变量的总个数
 };
 
 unsigned int hash(char* Name, int size, int len);
@@ -106,6 +125,7 @@ struct Node {
   Node* body;  // 若为 Compound 结点，对应的语句链表
   Node* init;  // 存储初始化结点
   Obj* Var;    // 对应变量
+  Type* ty;     // 数据类型
 };
 
 // 表示状态的种类
@@ -155,6 +175,12 @@ bool startsWith(char* Str, char* SubStr);
 
 // 语法分析入口
 Function* parse(Token** rest, Token* token);
+
+// 类型分析
+Type *pointerTo(Type *base);
+void addType(Node *node);
+bool isInteger(Type *ty);
+bool isPtr(Type *ty);
 
 // 汇编代码生成入口
 void genCode(Function* root);

@@ -81,7 +81,7 @@ static void genCode_re(Node *root) {
       printf("# 跳转到 .L.return\n");
       printf("\tj .L.return\n");
       return;
-    case TK_LBB:
+    case TK_LBB: {
       // 表明进入 compound, 需要遍历其 body
       Node *body = root->body;
       while (body) {
@@ -89,7 +89,8 @@ static void genCode_re(Node *root) {
         body = body->next;
       }
       return;
-    case TK_IF:
+    }
+    case TK_IF: {
       // Node 使用信息详见 parser.c mkIfNode 函数
       int if_cnt = count();
       printf("\n# ========分支语句 %d ========\n", if_cnt);
@@ -97,7 +98,7 @@ static void genCode_re(Node *root) {
       printf("\n # Condition 表达式 %d\n", if_cnt);
       genCode_re(root->body);
       printf("# 若 a0 为 0，即条件失败，跳转至分支 %d 的.L.else%d 段\n", if_cnt,
-            if_cnt);
+             if_cnt);
       printf("\tbeqz a0, .L.else%d\n", if_cnt);
       // 进行 if 成功分支
       printf("\n# Then 语句\n");
@@ -114,7 +115,8 @@ static void genCode_re(Node *root) {
       printf("\n # 分支 %d 的.L.end%d 段标签\n", if_cnt);
       printf(".L.endIf%d:\n", if_cnt);
       return;
-    case TK_FOR:
+    }
+    case TK_FOR: {
       // Node 使用信息详见 parser.c mkForNode 函数
       int for_cnt = count();
       printf("\n# ==== 循环语句 %d =============\n", for_cnt);
@@ -140,20 +142,11 @@ static void genCode_re(Node *root) {
       printf("# 循环结束标签\n");
       printf(".L.end%d:\n", for_cnt);
       return;
+    }
     case TK_ADDR:
       // 获取变量地址，注意到 & 为右结合操作符，需要递归
       genAddr(root->LNode);
       return;
-      // if (root->LNode->token->kind == TK_VAR) {
-      //   // 此时为生成变量地址而非得到变量值
-      //   genAddr(root->LNode);
-      //   return;
-      // }
-      // // 否则如果为 * 需要相消
-      // if (root->LNode->token->kind == TK_DEREF) {
-      //   genCode_re(root->LNode->LNode);
-      //   return;
-      // }
     case TK_DEREF:
       genCode_re(root->LNode);
       // 现在需要访问的地址在 a0
