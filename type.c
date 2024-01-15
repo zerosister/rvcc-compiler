@@ -10,11 +10,18 @@ bool isInteger(Type *ty) { return ty->tyKind == TY_INT; }
 bool isPtr(Type *ty) { return ty->tyKind == TY_PTR; }
 
 // 确定 type 为指针，并指向基类
-Type *pointerTo(Type *base) {
+Type* pointerTo(Type *base) {
   Type *ty = calloc(1, sizeof(Type));
   ty->tyKind = TY_PTR;
   ty->base = base;
   return ty;
+}
+
+Type* funcType(Type *ty) {
+  Type* func = calloc(1, sizeof(Type));
+  func->tyKind = TY_FUNC;
+  func->retType = ty;
+  return func;
 }
 
 // 为结点内所有需要类型检查结点添加类型

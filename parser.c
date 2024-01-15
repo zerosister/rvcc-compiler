@@ -12,7 +12,8 @@ static Token divisionToken = {TK_DIV};
 // so，回归课程中方法
 // 性质：递归下降
 
-// program = Compound
+// program = Function*
+// Function = Declspec '*'* Var '(' ')' Compound
 // Compound = { (Decla | Stmt)* }
 // Decla = 
 //        Declspec (Declarator ('=' expr)? (',' Declarator ('=' expr)?)*)? ';'
@@ -820,13 +821,41 @@ static Node* funcArgu(Token** rest, Token* token) {
   return head.next;
 }
 
-// program = compound
-Function* parse(Token** rest, Token* token) {
-  Node* body = compound(rest, token);
+// Function = Declspec '*'* Var '(' ')' Compound
+static Function* function(Token** rest, Token* token) {
+  // 获得函数返回值类型
+  Type* retType = declspec(rest, token);
+  while ((*rest)->kind == TK_MUL) {
+    retType = pointerTo(retType);
+    *rest = (*rest)->next; 
+  }
+  token = *rest;
+  if (!(token->kind == TK_VAR)) 
+    // 若非函数名
+    errorTok(token, "Dybala~, We need a function name~");
+  // 吸收函数左右括号
+  *rest = skip(token->next, "(");
+  *rest = skip(*rest, ")");
+  // 清空当前函数变量表，每个函数变量不同
+  hashTable = NULL;
+  Node* body = compound(rest, *rest);
+  // 生成当前 Function 结点
+  Function* func = calloc(1, sizeof(Function));
+  func->Locals = getHashTable();
+  func->FType = funcType(retType);
+  func->funcName = strndup(token->loc, token->len);
+  func->Body = body;
+  return func;
+}
 
-  // 函数体存储语句的 AST，locals 存储变量
-  Function* prog = calloc(1, sizeof(Function));
-  prog->Body = body;
-  prog->Locals = getHashTable();
-  return prog;
+// program = Function*
+Function* parse(Token** rest, Token* token) {
+  Function head = {};
+  Function* cur = &head;
+  while ((*rest)->kind == TK_INT) {
+    // 目前只支持的基础数据类型为 int
+    cur->next = function(rest, *rest);
+    cur = cur->next;
+  }
+  return head.next;
 }

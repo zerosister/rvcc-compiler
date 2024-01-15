@@ -62,15 +62,17 @@ struct Token {
 // 类型种类
 typedef enum {
   TY_INT, // int 整型
-  TY_PTR // 指针
+  TY_PTR, // 指针
+  TY_FUNC // 函数
 } TypeKind;
 
 // 结点或变量类型
 typedef struct Type Type;
 struct Type {
   TypeKind tyKind;  // 哪种类型
-  Type *base;         // 若类型为指针则表示指针指向的数据类型
-  Type *name;         // 为之后自定义结构体做准备
+  Type* base;         // 若类型为指针则表示指针指向的数据类型
+  Type* name;         // 为之后自定义结构体做准备
+  Type* retType;      // 函数返回类型
 };
 
 // 声明全局变量，在 type.c 中定义
@@ -161,6 +163,9 @@ struct Function {
   Node* Body;         //函数体
   HashTable* Locals;  //本地变量
   int StackSize;      //栈大小
+  Type* FType;        //函数类型
+  char* funcName;     //函数名
+  Function* next;     //下一个函数     
 };
 
 /************************ 函数声明 *************************/
@@ -180,7 +185,8 @@ bool startsWith(char* Str, char* SubStr);
 Function* parse(Token** rest, Token* token);
 
 // 类型分析
-Type *pointerTo(Type *base);
+Type* pointerTo(Type *base);
+Type* funcType(Type* ty);
 void addType(Node *node);
 bool isInteger(Type *ty);
 bool isPtr(Type *ty);
