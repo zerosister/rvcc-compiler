@@ -127,7 +127,8 @@ struct Node {
   Node* init;  // 存储初始化结点
   Obj* Var;    // 对应变量
   Type* ty;     // 数据类型
-  char* funcName; //函数名
+  char* funcName; // 函数名
+  Node* argus;  // 函数参数
 };
 
 // 表示状态的种类

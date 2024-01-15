@@ -36,7 +36,15 @@ static Token divisionToken = {TK_DIV};
 // Add' -> + Mul Add1' | - Mul Add1' | null
 // Mul -> Primary Mul'
 // Mul' -> * Primary Mul1' | / Primary Mul1' | null
-// Primary -> num | (Expr) | + Primary | - Primary | * Primary | & Primary | Var ('(' ')')?
+// Primary -> num 
+//          | (Expr) 
+//          | + Primary 
+//          | - Primary 
+//          | * Primary 
+//          | & Primary 
+//          | Var 
+//          | Var FuncArgu
+// FuncArgu -> '(' Assign? (, Assign)* ')'
 
 static Node* compound(Token** rest, Token* token);
 static Node* decla(Token** rest, Token* token);
@@ -54,6 +62,7 @@ static Status* add_Prime(Token** rest, Token* token, Node* inherit);
 static Status* mul(Token** rest, Token* token);
 static Status* mul_Prime(Token** rest, Token* token, Node* inherit);
 static Status* primary(Token** rest, Token* token);
+static Node* funcArgu(Token** rest, Token* token);
 
 static HashTable* getHashTable() {
   if (hashTable == NULL) hashTable = calloc(1, sizeof(HashTable));
@@ -761,8 +770,7 @@ static Status* primary(Token** rest, Token* token) {
       *rest = token->next;
       // 检查是否为函数调用
       if (equal(*rest, "(")) {
-        // 零参函数期待得到 ')'
-        *rest = skip((*rest)->next, ")");
+        prim->ptr->argus = funcArgu(rest, *rest);
         token->kind = TK_FUNC;
         prim->ptr->funcName = strndup(token->loc, token->len);
       }
@@ -784,6 +792,32 @@ static Status* primary(Token** rest, Token* token) {
   // 非法的
   errorTok(token, "boo boo,a num is expected~");
   return NULL;
+}
+
+
+// FuncArgu -> '(' Assign? (, Assign)* ')'
+static Node* funcArgu(Token** rest, Token* token) {
+  // 吸收 '('
+  *rest = skip(token, "(");
+  if ((*rest)->kind == TK_RBR) {
+    // 若为右括号，则为零参函数，吸收 ')' 返回
+    *rest = (*rest)->next;
+    return NULL;
+  }
+  Node head = {};
+  Node* cur = &head;
+  // 吸收第一个参数
+  cur->next = assign(rest, *rest)->ptr;
+  cur = cur->next;
+  while ((*rest)->kind == TK_COM) {
+    // 吸收 ','
+    *rest = (*rest)->next;
+    cur->next = assign(rest, *rest)->ptr;
+    cur = cur->next;
+  }
+  // 吸收 ')'
+  *rest = skip(*rest, ")");
+  return head.next;
 }
 
 // program = compound
