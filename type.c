@@ -58,6 +58,7 @@ void addType(Node *node) {
     case TK_BGE:
     case TK_BGT:
     case TK_NUM:
+    case TK_FUNC:
       node->ty = TypeInt;
       return;
     // 结点类型设为 变量类型

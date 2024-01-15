@@ -36,7 +36,7 @@ static Token divisionToken = {TK_DIV};
 // Add' -> + Mul Add1' | - Mul Add1' | null
 // Mul -> Primary Mul'
 // Mul' -> * Primary Mul1' | / Primary Mul1' | null
-// Primary -> num | (Expr) | + Primary | - Primary | * Primary | & Primary
+// Primary -> num | (Expr) | + Primary | - Primary | * Primary | & Primary | Var ('(' ')')?
 
 static Node* compound(Token** rest, Token* token);
 static Node* decla(Token** rest, Token* token);
@@ -720,7 +720,7 @@ static Status* mul_Prime(Token** rest, Token* token, Node* inherit) {
   return NULL;
 }
 
-// Primary -> num | (Expr) | + Primary | - Primary | * Primary | & Primary
+// Primary -> num | (Expr) | + Primary | - Primary | * Primary | & Primary | Var ('(' ')')?
 static Status* primary(Token** rest, Token* token) {
   Status* prim = newStatus(ST_Primary);
   switch (token->kind) {
@@ -759,6 +759,13 @@ static Status* primary(Token** rest, Token* token) {
       // 识别到变量
       prim->ptr = mkVarNode(token);
       *rest = token->next;
+      // 检查是否为函数调用
+      if (equal(*rest, "(")) {
+        // 零参函数期待得到 ')'
+        *rest = skip((*rest)->next, ")");
+        token->kind = TK_FUNC;
+        prim->ptr->funcName = strndup(token->loc, token->len);
+      }
       return prim;
     case TK_MUL:
       // '*' 一直作为 TK_MUL 传递到此，实际为解引用操作

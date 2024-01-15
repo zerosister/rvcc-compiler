@@ -165,6 +165,11 @@ static void genCode_re(Node *root) {
       printf("# 将 a0 值，写入 a1 存放的地址中\n");
       printf("\tsd a0,0(a1)\n");
       return;
+    case TK_FUNC:
+    // 此处用的即为分词时作为 VAR 存储的函数名 
+      printf("\n# 调用函数%s\n",root->funcName);
+      printf("\tcall %s\n", root->funcName);
+      return;
     default:
       break;
   }
@@ -316,16 +321,22 @@ void genCode(Function *prog) {
   printf("# main 段标签，程序入口段\n");
   printf("main:\n");
 
-  // 栈布局
+ // 栈布局
   //-------------------------------// sp
+  //              ra
+  //-------------------------------// ra = sp-8
   //              fp
-  //-------------------------------// fp = sp-8
+  //-------------------------------// fp = sp-16
   //             变量
-  //-------------------------------// sp = sp-8-StackSize
+  //-------------------------------// sp = sp-16-StackSize
   //           表达式计算
   //-------------------------------//
 
   // pre process
+  // 将 ra 指针压栈，保存 ra 值
+  printf("# 将 ra 压栈，保存返回地址\n");
+  printf("\t addi sp, sp, -8\n");
+  printf("\tsd ra,0(sp)\n");
   // 将 fp 指针压栈，此时 fp 应当为上一级值
   printf("# 将当前 fp 压栈，fp 属于“被调用者保存”的寄存器，需要恢复原值\n");
   printf("\taddi sp,sp,-8\n");
@@ -349,10 +360,15 @@ void genCode(Function *prog) {
   // 将栈复原
   printf("\taddi sp,sp,%d\n", prog->StackSize);
   // 恢复 fp
-  printf("# 恢复 fp,sp\n");
+  printf("# 恢复 fp\n");
   printf("\tld fp,0(sp)\n");
+  printf("\taddi sp,sp,8\n");
+  // 恢复 ra
+  printf("# 恢复 ra, sp\n");
+  printf("\tld ra,0(sp)\n");
   printf("\taddi sp,sp,8\n");
   // 栈未清零则报错
   assert(Depth == 0);
+  printf("# 返回 a0 值给系统调用\n");
   printf("\tret\n");
 }
