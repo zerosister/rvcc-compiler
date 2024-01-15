@@ -17,6 +17,12 @@ Type* pointerTo(Type *base) {
   return ty;
 }
 
+Type* copyType(Type* ty) {
+  Type* myType = calloc(1, sizeof(Type));
+  *myType = *ty;
+  return myType;
+}
+
 Type* funcType(Type *ty) {
   Type* func = calloc(1, sizeof(Type));
   func->tyKind = TY_FUNC;

@@ -13,7 +13,8 @@ static Token divisionToken = {TK_DIV};
 // 性质：递归下降
 
 // program = Function*
-// Function = Declspec '*'* Var '(' ')' Compound
+// Function = Declspec '*'* Var Typesuffix Compound
+// Typesuffix = '(' (Declspec Declarator (, Declspec Declarator)*)? ')'
 // Compound = { (Decla | Stmt)* }
 // Decla = 
 //        Declspec (Declarator ('=' expr)? (',' Declarator ('=' expr)?)*)? ';'
@@ -821,7 +822,29 @@ static Node* funcArgu(Token** rest, Token* token) {
   return head.next;
 }
 
-// Function = Declspec '*'* Var '(' ')' Compound
+// Typesuffix = '(' (Declspec Declarator (, Declspec Declarator)*)? ')'
+static Type* typeSuffix(Token** rest, Token* token) {
+  // 吸收函数左括号
+  *rest = skip(token->next, "(");
+  Type head = {};
+  Type* cur = &head;
+  if ((*rest)->kind != TK_RBR) {
+    cur->next = copyType(declspec(rest, *rest)); 
+    // 不要浪费 hhh~，变量中已经生成了字符串
+    cur->next->var = declarator(rest, *rest, cur->next)->Var;
+    cur = cur->next;
+    while ((*rest)->kind == TK_COM) {
+      *rest = skip(*rest, ",");
+      cur->next = declspec(rest, *rest);
+      cur->next->var = declarator(rest, *rest, cur->next)->Var;
+      cur = cur->next;
+    }
+  }
+  *rest = skip(*rest, ")");
+  return head.next;
+}
+
+// Function = Declspec '*'* Var Typesuffix Compound
 static Function* function(Token** rest, Token* token) {
   // 获得函数返回值类型
   Type* retType = declspec(rest, token);
@@ -830,20 +853,20 @@ static Function* function(Token** rest, Token* token) {
     *rest = (*rest)->next; 
   }
   token = *rest;
+  // 清空当前函数变量表，每个函数变量不同
+  hashTable = NULL;
   if (!(token->kind == TK_VAR)) 
     // 若非函数名
     errorTok(token, "Dybala~, We need a function name~");
-  // 吸收函数左右括号
-  *rest = skip(token->next, "(");
-  *rest = skip(*rest, ")");
-  // 清空当前函数变量表，每个函数变量不同
-  hashTable = NULL;
+  // 获取参数链表
+  Type* params = typeSuffix(rest, *rest);
   Node* body = compound(rest, *rest);
   // 生成当前 Function 结点
   Function* func = calloc(1, sizeof(Function));
   func->Locals = getHashTable();
   func->FType = funcType(retType);
   func->funcName = strndup(token->loc, token->len);
+  func->params = params;
   func->Body = body;
   return func;
 }

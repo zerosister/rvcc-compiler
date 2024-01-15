@@ -35,8 +35,8 @@ typedef enum {
   TK_VAR,    //变量
   TK_ASS,    //赋值符号
   TK_RET,    // return
-  TK_LBB,    // Left Big Brakect
-  TK_RBB,    // Right Big Brakect
+  TK_LBB,    // {
+  TK_RBB,    // }
   TK_IF,     // if
   TK_ELS,    // else
   TK_FOR,    // for
@@ -66,12 +66,17 @@ typedef enum {
   TY_FUNC // 函数
 } TypeKind;
 
+// 符号表中变量
+typedef struct Obj Obj;
+
 // 结点或变量类型
 typedef struct Type Type;
 struct Type {
-  TypeKind tyKind;  // 哪种类型
+  TypeKind tyKind;    // 哪种类型
   Type* base;         // 若类型为指针则表示指针指向的数据类型
-  Type* name;         // 为之后自定义结构体做准备
+  Type* params;       // 形参
+  Type* next;         // 指示下一个形参
+  Obj* var;          // 记录下函数形参信息
   Type* retType;      // 函数返回类型
 };
 
@@ -82,7 +87,6 @@ extern Type *TypeInt;
 #if USE_HASH
 // hash_size 即为 hash 桶的个数
 #define HASH_SIZE 13
-typedef struct Obj Obj;
 struct Obj {
   char* Name;        //变量名
   int value;         //哈希值，防止每次都调用 hash 函数
@@ -162,6 +166,7 @@ typedef struct Function Function;
 struct Function {
   Node* Body;         //函数体
   HashTable* Locals;  //本地变量
+  Type* params;       //形参
   int StackSize;      //栈大小
   Type* FType;        //函数类型
   char* funcName;     //函数名
@@ -190,6 +195,7 @@ Type* funcType(Type* ty);
 void addType(Node *node);
 bool isInteger(Type *ty);
 bool isPtr(Type *ty);
+Type* copyType(Type* ty);
 
 // 汇编代码生成入口
 void genCode(Function* root);

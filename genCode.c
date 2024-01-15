@@ -338,9 +338,9 @@ static void codeGen(Function* func) {
   current_func = func;
   Node *body = func->Body;
   assignVarOffsets(func);
-  printf("\n# 定义全局 %s 段\n", func->funcName);
+  printf("\n# 定义 %s 段\n", func->funcName);
   printf("\t.global %s\n", func->funcName);
-  printf("\n #====程序开始============\n");
+  printf("\n #====%s程序开始============\n", func->funcName);
   printf("# %s 段标签，程序入口段\n", func->funcName);
   printf("%s:\n", func->funcName);
 
@@ -369,6 +369,15 @@ static void codeGen(Function* func) {
   printf("\tmv fp,sp\n");
   printf("# sp 腾出 StackSize 大小的栈空间\n");
   printf("\taddi sp,sp,-%d\n", func->StackSize);
+  // 将传入的参数映射到函数的变量中
+  Type* param = func->params;
+  int paraCnt = 0;
+  while (param) {
+    printf("# 将传入参数赋值给 变量%s\n", param->var->Name);
+    printf("\tsd a%d,%d(fp)\n", paraCnt,param->var->Offset);
+    paraCnt++;
+    param = param->next;
+  }
   printf("\n# ====正文部分===============\n");
   while (body) {
     genStmt(body);
@@ -376,7 +385,7 @@ static void codeGen(Function* func) {
   }
 
   // return 语句生成
-  printf("\n# ====程序结束===============\n");
+  printf("\n# ====%s程序结束===============\n", func->funcName);
   printf("# return 标签\n");
   printf(".L.%s.return:\n", func->funcName);
   // post process
