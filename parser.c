@@ -6,6 +6,8 @@ HashTable* hashTable = NULL;
 // 自行构建 token 变量
 static Token multiplyToken = {TK_MUL};
 static Token divisionToken = {TK_DIV};
+static Token addToken = {TK_ADD};
+static Token dereferenceToken = {TK_DEREF};
 
 // 非递归的语法分析，发现 LL(1) 文法用栈其实无法解决本质问题
 // 因为仅仅为生成产生式时有用，附加语义动作则需要在 parse 中同时进行
@@ -19,7 +21,8 @@ static Token divisionToken = {TK_DIV};
 // Decla = 
 //        Declspec (Declarator ('=' expr)? (',' Declarator ('=' expr)?)*)? ';'
 // Declspec: 数据类型
-// Declarator: '*'* Var ([num])? 可以为多重指针
+// Declarator: '*'* Var ArrarySuffix 可以为多重指针
+// ArrarySuffix = ('['num']')*
 // Stmt -> return ExprStmt
 //        | ExprStmt
 //        | if '(' Expr ')' Stmt (else Stmt)?
@@ -36,16 +39,15 @@ static Token divisionToken = {TK_DIV};
 // Rela' -> < Add Rela' | > Add Rela' | <= Add Rela' | >= Add Rela' | null
 // Add -> Mul Add'
 // Add' -> + Mul Add1' | - Mul Add1' | null
-// Mul -> Primary Mul'
-// Mul' -> * Primary Mul1' | / Primary Mul1' | null
-// Primary -> num 
-//          | (Expr) 
-//          | + Primary 
-//          | - Primary 
-//          | * Primary 
-//          | & Primary 
-//          | Var 
-//          | Var FuncArgu
+// Mul -> Unary Mul'
+// Mul' -> * Unary Mul1' | / Unary Mul1' | null
+// Unary ->   + Unary 
+//          | - Unary 
+//          | * Unary 
+//          | & Unary 
+//          | Primary ('[' Expr ']')*
+// Primary -> num | Var | Var FuncArgu | '('Expr')' | sizeof Unary
+//          
 // FuncArgu -> '(' Assign? (, Assign)* ')'
 
 static Node* compound(Token** rest, Token* token);
@@ -63,7 +65,8 @@ static Status* add(Token** rest, Token* token);
 static Status* add_Prime(Token** rest, Token* token, Node* inherit);
 static Status* mul(Token** rest, Token* token);
 static Status* mul_Prime(Token** rest, Token* token, Node* inherit);
-static Status* primary(Token** rest, Token* token);
+static Status* unary(Token** rest, Token* token);
+static Node* primary(Token** rest, Token* token);
 static Node* funcArgu(Token** rest, Token* token);
 
 static HashTable* getHashTable() {
@@ -218,8 +221,8 @@ static Node* mkAddNode(Token* token, Node* left, Node* right) {
 
   // ptr +|- num
   if (isPtr(left->ty) && isInteger(right->ty)) {
-    // 使用了自带的 token
-    right = mkNode(&multiplyToken, right, mkNum(8));
+    // 指针加法为每次加减指针指向基类的大小
+    right = mkNode(&multiplyToken, right, mkNum(left->ty->base->size));
     addType(right);
     return mkNode(token, left, right);
   }
@@ -228,7 +231,7 @@ static Node* mkAddNode(Token* token, Node* left, Node* right) {
   if (isPtr(left->ty) && isPtr(right->ty) && token->kind == TK_SUB) {
     Node* node = mkNode(token, left, right);
     node->ty = TypeInt;
-    return mkNode(&divisionToken, node, mkNum(8));
+    return mkNode(&divisionToken, node, mkNum(left->ty->base->size));
   }
 
   errorTok(token, "Beckham~,operands invalid~~");
@@ -287,7 +290,25 @@ static Type* declspec(Token** rest, Token* token) {
   }  
 }
 
-// Declarator: '*'* Var ([num])? 变量可以为多重指针
+// ([num])* 递归解析数组
+static Type* arraySuffix(Token** rest, Token* token, Type* ty) {
+  if (token->kind == TK_LMB) {
+    // 检测到为数组，吸收 [
+    *rest = (*rest)->next;
+    // 记录下数组元素个数
+    int cnt = (*rest)->val;
+    *rest = (*rest)->next;
+    *rest = skip(*rest, "]");
+    if ((*rest)->kind ==  TK_LMB) {
+      // 多维数组
+      ty = arraySuffix(rest, *rest, ty);
+    }
+    ty = arrayOf(ty, cnt);
+  }
+  return ty;
+}
+
+// Declarator: '*'* ArrarySuffix Var  变量可以为多重指针
 static Node* declarator(Token** rest, Token* token, Type* ty) {
   // 此时便加入符号表，此后的变量出现都只用在符号表中查找
   while ((*rest)->kind == TK_MUL) {
@@ -302,15 +323,7 @@ static Node* declarator(Token** rest, Token* token, Type* ty) {
   Node* node = mkLeaf(*rest);
   // 将变量 token 消耗
   *rest = (*rest)->next;
-  if ((*rest)->kind == TK_LMB) {
-    // 检测到为数组，吸收 [
-    *rest = (*rest)->next;
-    // 记录下数组元素个数
-    obj->cnt = (*rest)->val;
-    *rest = (*rest)->next;
-    *rest = skip(*rest, "]");
-    ty = arrayOf(ty, obj->cnt);
-  }
+  ty = arraySuffix(rest, *rest, ty);
   obj->ty = ty;
   node->Var = obj;
   return node;
@@ -467,6 +480,7 @@ static Status* assign(Token** rest, Token* token) {
     // 此时识别的 '*' 应该认为是解引用
     case TK_MUL:
     case TK_ADDR:
+    case TK_SIZEOF:
       // Assign -> Equa Assign'
       Status* equa = equation(rest, token);
       Status* ass_P = assign_Prime(rest, *rest, equa->ptr);
@@ -491,6 +505,7 @@ static Status* assign_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_RBR:
     case TK_SEM:
     case TK_EOF:
+    case TK_RMB:
     case TK_COM:
       // Assign' -> = null
       ass_P->system = inherit;
@@ -512,6 +527,7 @@ static Status* equation(Token** rest, Token* token) {
     // 此时识别的 '*' 应该认为是解引用
     case TK_MUL:
     case TK_ADDR:
+    case TK_SIZEOF:
       // Equa -> Rela Equa'
       Status* relation = rela(rest, token);
       Status* equa_P = equation_Prime(rest, *rest, relation->ptr);
@@ -544,6 +560,7 @@ static Status* equation_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_SEM:
     case TK_ASS:
     case TK_COM:
+    case TK_RMB:
     case TK_EOF:  //加入是为了防止编译器在此时即报错，需要等到 expression
                   //需要;时再报错
       // Equa' -> null
@@ -567,6 +584,7 @@ static Status* rela(Token** rest, Token* token) {
     // 此时识别的 '*' 应该认为是解引用
     case TK_MUL:
     case TK_ADDR:
+    case TK_SIZEOF:
       // Rela -> E Rela'
       Status* addition = add(rest, token);
       Status* relat_P = rela_Prime(rest, *rest, addition->ptr);
@@ -599,6 +617,7 @@ static Status* rela_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_RBR:
     case TK_ASS:
     case TK_COM:
+    case TK_RMB:
     case TK_EOF:  //加入是为了防止编译器在此时即报错，需要等到 expression
                   //需要;时再报错
       // Rela' -> null
@@ -623,6 +642,7 @@ static Status* add(Token** rest, Token* token) {
     // 此时识别的 '*' 应该认为是解引用
     case TK_MUL:
     case TK_ADDR:
+    case TK_SIZEOF:
       // 递归进入 Mul 识别
       Status* mult = mul(rest, token);
       // 传递继承属性到 Add'识别
@@ -660,6 +680,7 @@ static Status* add_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_DEQ:
     case TK_ASS:
     case TK_COM:
+    case TK_RMB:
     case TK_EOF:  //加入是为了防止编译器在此时即报错，需要等到 expression
                   //需要;时再报错
       // Follow(E') 下 Add' -> null
@@ -674,7 +695,7 @@ static Status* add_Prime(Token** rest, Token* token, Node* inherit) {
   return NULL;
 }
 
-// Mul -> Primary Mul'
+// Mul -> Unary Mul'
 static Status* mul(Token** rest, Token* token) {
   // 新建状态
   Status* mult = newStatus(ST_Mul);
@@ -688,7 +709,8 @@ static Status* mul(Token** rest, Token* token) {
     // 此时识别的 '*' 应该认为是解引用
     case TK_MUL:
     case TK_ADDR:
-      Status* prim = primary(rest, token);
+    case TK_SIZEOF:
+      Status* prim = unary(rest, token);
       Status* mult_P = mul_Prime(rest, *rest, prim->ptr);
       mult->ptr = mult_P->system;
       return mult;
@@ -697,16 +719,16 @@ static Status* mul(Token** rest, Token* token) {
   }
 }
 
-// Mul' -> * Primary Mul1' | / Primary Mul1' | null
+// Mul' -> * Unary Mul1' | / Unary Mul1' | null
 static Status* mul_Prime(Token** rest, Token* token, Node* inherit) {
   Status* mult_P = newStatus(ST_MPrim);
   switch (token->kind) {
-    // 识别到* or / ,Mul' -> * Primary Mul1' | / Primary Mul1'
+    // 识别到* or / ,Mul' -> * Unary Mul1' | / Unary Mul1'
     case TK_MUL:
     case TK_DIV:
-      // printf("Mul' -> * Primary Mul1' | / Primary Mul1'\n");
+      // printf("Mul' -> * Unary Mul1' | / Unary Mul1'\n");
       *rest = token->next;
-      Status* prim = primary(rest, *rest);
+      Status* prim = unary(rest, *rest);
       Status* mult_P2 =
           mul_Prime(rest, *rest, mkNode(token, inherit, prim->ptr));
       mult_P->system = mult_P2->system;
@@ -725,6 +747,7 @@ static Status* mul_Prime(Token** rest, Token* token, Node* inherit) {
     case TK_SUB:
     case TK_ASS:
     case TK_COM:
+    case TK_RMB:
     case TK_EOF:  //加入是为了防止编译器在此时即报错，需要等到 expression
                   //需要;时再报错
       // printf("Mul' -> null\n");
@@ -739,32 +762,20 @@ static Status* mul_Prime(Token** rest, Token* token, Node* inherit) {
   return NULL;
 }
 
-// Primary -> num | (Expr) | + Primary | - Primary | * Primary | & Primary | Var ('(' ')')?
-static Status* primary(Token** rest, Token* token) {
+// Unary ->   + Unary 
+//          | - Unary 
+//          | * Unary 
+//          | & Unary 
+//          | Primary ('[' Expr ']')*
+static Status* unary(Token** rest, Token* token) {
   Status* prim = newStatus(ST_Primary);
   switch (token->kind) {
-    case TK_LBR:
-      // 识别到 Primary -> (Equa)
-      *rest = token->next;
-      token = token->next;
-      Status* equa = expr(rest, token);
-      // 同时此时需要消耗 )
-      token = *rest;
-      *rest = skip(token, ")");
-      prim->ptr = equa->ptr;
-      return prim;
-    case TK_NUM:
-      // 识别到 Primary -> num
-      // printf("Primary -> num\n");
-      prim->ptr = mkLeaf(token);
-      *rest = token->next;
-      return prim;
     case TK_SUB:
       // 消耗 -
       *rest = token->next;
       // 因为为从左到右遍历二叉树，所以需要先从左结点得到数值，再进行单元运算
       // 所以课程中的从右到左遍历二叉树好处就是，单运算符时，运算符在左结点
-      prim->ptr = mkNode(token, primary(rest, *rest)->ptr, NULL);
+      prim->ptr = mkNode(token, unary(rest, *rest)->ptr, NULL);
       return prim;
     case TK_ADD:
       // 不需要 genCode，只需要消耗 + 即可
@@ -773,37 +784,77 @@ static Status* primary(Token** rest, Token* token) {
         *rest = token->next;
         token = *rest;
       }
-      return primary(rest, *rest);
-    case TK_VAR:
-      // 识别到变量
-      prim->ptr = mkVarNode(token);
-      *rest = token->next;
-      // 检查是否为函数调用
-      if (equal(*rest, "(")) {
-        prim->ptr->argus = funcArgu(rest, *rest);
-        token->kind = TK_FUNC;
-        prim->ptr->funcName = strndup(token->loc, token->len);
-      }
-      return prim;
+      return unary(rest, *rest);
     case TK_MUL:
       // '*' 一直作为 TK_MUL 传递到此，实际为解引用操作
       token->kind = TK_DEREF;
       *rest = token->next;
-      prim->ptr = mkNode(token, primary(rest, *rest)->ptr, NULL);
+      prim->ptr = mkNode(token, unary(rest, *rest)->ptr, NULL);
       return prim;
     case TK_ADDR:
       // '&' 操作
       *rest = token->next;
-      prim->ptr = mkNode(token, primary(rest, *rest)->ptr, NULL);
+      prim->ptr = mkNode(token, unary(rest, *rest)->ptr, NULL);
       return prim;
     default:
-      break;
+      // 进入 Primary
+      prim->ptr = primary(rest, token);
+      while ((*rest)->kind == TK_LMB) {
+        // 注意二维数组如 x[1][2] = *(*(x+1)+2)
+        // 吸收 [
+        *rest = (*rest)->next;
+        Node* add = expr(rest, *rest)->ptr;
+        // 吸收 ]
+        *rest = skip(*rest, "]");
+        prim->ptr = mkAddNode(&addToken, prim->ptr, add);
+        prim->ptr = mkNode(&dereferenceToken, prim->ptr, NULL);
+      }
+      return prim;
   }
-  // 非法的
-  errorTok(token, "boo boo,a num is expected~");
-  return NULL;
 }
 
+// Primary -> num | Var | Var FuncArgu | '('Expr')' | sizeof Unary
+static Node* primary(Token** rest, Token* token) {
+  switch (token->kind) {
+    case TK_LBR:
+      // 识别到 Primary -> (Expr)
+      *rest = token->next;
+      token = token->next;
+      Status* equa = expr(rest, token);
+      // 同时此时需要消耗 )
+      token = *rest;
+      *rest = skip(token, ")");
+      return equa->ptr;
+    case TK_NUM:
+      // 识别到 Primary -> num
+      *rest = token->next;
+      return mkLeaf(token);
+    case TK_VAR:{
+      // 识别到变量
+      Node* var = mkVarNode(token);
+      *rest = token->next;
+      // 检查是否为函数调用
+      if (equal(*rest, "(")) {
+        var->argus = funcArgu(rest, *rest);
+        token->kind = TK_FUNC;
+        var->funcName = strndup(token->loc, token->len);
+      }
+      return var;
+    }
+    case TK_SIZEOF: {
+      // 吸收 sizeof
+      *rest = token->next;
+      Node* size = unary(rest, *rest)->ptr;
+      addType(size);
+      size = mkNum(size->ty->size);
+      return size;
+    }
+    default:
+        // 非法的
+      errorTok(token, "boo boo,a num is expected~");
+      break;
+  }
+}
 
 // FuncArgu -> '(' Assign? (, Assign)* ')'
 static Node* funcArgu(Token** rest, Token* token) {

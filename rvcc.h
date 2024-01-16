@@ -48,6 +48,7 @@ typedef enum {
   TK_FUNC,   // 函数调用
   TK_LMB,    // [
   TK_RMB,    // ]
+  TK_SIZEOF, // sizeof
   TK_EOF     //终结符
 } TokenKind;
 
@@ -97,7 +98,6 @@ struct Obj {
   struct Obj* next;  // 下一个对象
   int Offset;        // fp 偏移量
   Type *ty;          // 数据类型
-  int cnt;           // 数组中元素个数
 };
 
 typedef struct HashTable HashTable;
@@ -119,7 +119,6 @@ struct Obj {
   struct Obj* next;  // 下一个对象
   int Offset;        // fp 偏移量
   Type *ty;          // 数据类型
-  int cnt;           // 数组中元素个数
 };
 
 // 方便之后对比，统一用上 hash_table

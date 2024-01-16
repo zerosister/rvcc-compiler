@@ -42,7 +42,6 @@ static void genAddr(Node *node) {
     return;
   }
   if (node->token->kind == TK_DEREF) {
-    // genCode_re(node->LNode);
     genExpr(node->LNode);
     // 正常遇到变量便会解引用
     return;
