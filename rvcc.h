@@ -46,6 +46,8 @@ typedef enum {
   TK_INT,    // int
   TK_COM,    // ，
   TK_FUNC,   // 函数调用
+  TK_LMB,    // [
+  TK_RMB,    // ]
   TK_EOF     //终结符
 } TokenKind;
 
@@ -63,6 +65,7 @@ struct Token {
 typedef enum {
   TY_INT, // int 整型
   TY_PTR, // 指针
+  TY_ARRAY, //数组
   TY_FUNC // 函数
 } TypeKind;
 
@@ -76,8 +79,9 @@ struct Type {
   Type* base;         // 若类型为指针则表示指针指向的数据类型
   Type* params;       // 形参
   Type* next;         // 指示下一个形参
-  Obj* var;          // 记录下函数形参信息
+  Obj* var;           // 记录下函数形参信息
   Type* retType;      // 函数返回类型
+  int size;           // 类型所占空间，若为数组则为整个数组所占空间
 };
 
 // 声明全局变量，在 type.c 中定义
@@ -88,11 +92,12 @@ extern Type *TypeInt;
 // hash_size 即为 hash 桶的个数
 #define HASH_SIZE 13
 struct Obj {
-  char* Name;        //变量名
-  int value;         //哈希值，防止每次都调用 hash 函数
-  struct Obj* next;  //下一个对象
+  char* Name;        // 变量名
+  int value;         // 哈希值，防止每次都调用 hash 函数
+  struct Obj* next;  // 下一个对象
   int Offset;        // fp 偏移量
   Type *ty;          // 数据类型
+  int cnt;           // 数组中元素个数
 };
 
 typedef struct HashTable HashTable;
@@ -109,9 +114,12 @@ void remove_hash(HashTable* hashTable, char* Name);
 // 本地变量（符号表）思考：每个方程有不同的符号表，故可以变量重名
 typedef struct Obj Obj;
 struct Obj {
-  Obj* Next;   //指向下一对象
-  char* Name;  //变量名
-  int Offset;  // fp 的偏移量
+  char* Name;        // 变量名
+  int value;         // 哈希值，防止每次都调用 hash 函数
+  struct Obj* next;  // 下一个对象
+  int Offset;        // fp 偏移量
+  Type *ty;          // 数据类型
+  int cnt;           // 数组中元素个数
 };
 
 // 方便之后对比，统一用上 hash_table
@@ -196,6 +204,7 @@ void addType(Node *node);
 bool isInteger(Type *ty);
 bool isPtr(Type *ty);
 Type* copyType(Type* ty);
+Type* arrayOf(Type* ty, int cnt);
 
 // 汇编代码生成入口
 void genCode(Function* root);

@@ -103,6 +103,10 @@ static int specify_puntc(char* p) {
       return TK_ADDR;
     case ',':
       return TK_COM;
+    case '[':
+      return TK_LMB;
+    case ']':
+      return TK_RMB;
     default:
       errorAt(p, "Darling T.T ~~ I can't deal with this punctuation");
   }

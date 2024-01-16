@@ -50,6 +50,16 @@ static void genAddr(Node *node) {
   errorTok(node->token, "Da Zhang Wei says: not an lvalue");
 }
 
+// 加载变量到 a0
+static void load(Type* ty) {
+  // 若为数组则变量作为地址用
+  if (ty->tyKind == TY_ARRAY) 
+    return;
+  // 将变量 load 至 a0
+  printf("# 读取 a0 中存放的地址，得到值存入 a0\n");
+  printf("\tld a0,0(a0)\n");
+}
+
 // 计数程序
 static int count() {
   static int cnt = 0;
@@ -94,9 +104,7 @@ static void genExpr(Node* root) {
     case TK_VAR:
       // 将变量地址存入 a0
       genAddr(root);
-      // 将变量 load 至 a0
-      printf("# 读取 a0 中存放的地址，得到值存入 a0\n");
-      printf("\tld a0,0(a0)\n");
+      load(root->ty);
       return;
     case TK_ADDR:
       // 获取变量地址，注意到 & 为右结合操作符，需要递归
@@ -104,9 +112,7 @@ static void genExpr(Node* root) {
       return;
     case TK_DEREF:
       genExpr(root->LNode);
-      // 现在需要访问的地址在 a0
-      printf("# 解引用时 将结点对应变量内容加载至 a0\n");
-      printf("\tld a0,0(a0)\n");
+      load(root->ty);
       return;
     case TK_ASS:
       // 产生地址
@@ -315,18 +321,21 @@ static void assignVarOffsets(Function *func) {
   for (int i = 0; i < HASH_SIZE; i++) {
     Obj *var = func->Locals->objs[i];
     while (var) {
-      offset += 8;
+      // 偏移量置为类型偏移量
+      offset += var->ty->size;
       var->Offset = -offset;
       var = var->next;
     }
   }
 #else
-  // 读取所有变量
-  for (Obj *var = func->Locals->locals; var; var = var->Next) {
-    // 每个变量分配 8 字节
-    offset += 8;
-    // 记录下每个变量的栈中地址
-    var->Offset = -offset;
+  // 读取所有变量，因为头节点没有变量故从 next 开始
+  if (func->Locals->locals) {
+    for (Obj *var = func->Locals->locals->next; var; var = var->next) {
+      // 每个变量分配对应空间
+      offset += var->ty->size;
+      // 记录下每个变量的栈中地址
+      var->Offset = -offset;
+    }
   }
 #endif
   // 将栈对齐到 16 字节

@@ -1,33 +1,46 @@
 #include "rvcc.h"
 
 //  (Type){...} 构造一个复合字面量，相当于 Type 的匿名变量
-Type *TypeInt = &(Type){TY_INT};
+Type *TypeInt = &(Type){TY_INT, .size = 8};
 
 // 判断 Type 是否为 int 类型
 bool isInteger(Type *ty) { return ty->tyKind == TY_INT; }
 
-// 判断 Type 是否为 ptr 类型 
-bool isPtr(Type *ty) { return ty->tyKind == TY_PTR; }
+// 判断 Type 是否为 ptr 类型，或为 array 类型
+// 只要 base 非 NULL 表示为指针或数组 
+bool isPtr(Type *ty) { return !(ty->base == NULL); }
 
 // 确定 type 为指针，并指向基类
 Type* pointerTo(Type *base) {
   Type *ty = calloc(1, sizeof(Type));
   ty->tyKind = TY_PTR;
   ty->base = base;
+  ty->size = 8;       // 指针占 8 字节
   return ty;
 }
 
+// 另起内存空间复制数据类型
 Type* copyType(Type* ty) {
   Type* myType = calloc(1, sizeof(Type));
   *myType = *ty;
   return myType;
 }
 
-Type* funcType(Type *ty) {
+// 构建返回值类型为 ty 的函数类型
+Type* funcType(Type* ty) {
   Type* func = calloc(1, sizeof(Type));
   func->tyKind = TY_FUNC;
   func->retType = ty;
   return func;
+}
+
+// 构建含有 cnt 个 ty 类型元素的数组类型
+Type* arrayOf(Type* ty, int cnt) {
+  Type* arrayType = calloc(1, sizeof(Type));
+  arrayType->tyKind = TY_ARRAY;
+  arrayType->base = ty;
+  arrayType->size = ty->size * cnt;
+  return arrayType;
 }
 
 // 为结点内所有需要类型检查结点添加类型
@@ -82,9 +95,9 @@ void addType(Node *node) {
     case TK_ADDR:
       node->ty = pointerTo(node->LNode->ty);
       return;
-    // 结点类型设为 指针指向的类型，若解引用所指向的非指针，则报错
+    // 结点类型设为 指针指向的类型，若解引用所指向的非指针或数组，则报错
     case TK_DEREF:
-      if (node->LNode->ty->tyKind != TY_PTR) 
+      if (!(isPtr(node->LNode->ty))) 
         errorTok(node->token, "Warrior~,invalid pointer dereference");
       node->ty = node->LNode->ty->base;
     default:

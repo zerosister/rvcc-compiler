@@ -19,7 +19,7 @@ static Token divisionToken = {TK_DIV};
 // Decla = 
 //        Declspec (Declarator ('=' expr)? (',' Declarator ('=' expr)?)*)? ';'
 // Declspec: 数据类型
-// Declarator: '*'* ident  可以为多重指针
+// Declarator: '*'* Var ([num])? 可以为多重指针
 // Stmt -> return ExprStmt
 //        | ExprStmt
 //        | if '(' Expr ')' Stmt (else Stmt)?
@@ -100,10 +100,10 @@ static Obj* findVar(Token* token) {
   if (locals == NULL) {
     return NULL;
   }
-  Obj* cmp = locals->Next;
+  Obj* cmp = locals->next;
   while (cmp && !(startsWith(token->loc, cmp->Name) &&
                   (token->len == strlen(cmp->Name)))) {
-    cmp = cmp->Next;
+    cmp = cmp->next;
   }
   if (cmp && startsWith(token->loc, cmp->Name) &&
       (token->len == strlen(cmp->Name)))
@@ -120,10 +120,10 @@ static Obj* newVar(Token* token) {
     var = calloc(1, sizeof(Obj));
     var->Name = strndup(token->loc, token->len);
     // 头插法插入符号表
-    if (locals->Next) {
-      var->Next = locals->Next;
+    if (locals->next) {
+      var->next = locals->next;
     }
-    locals->Next = var;
+    locals->next = var;
   }
   return var;
 }
@@ -222,7 +222,6 @@ static Node* mkAddNode(Token* token, Node* left, Node* right) {
     right = mkNode(&multiplyToken, right, mkNum(8));
     addType(right);
     return mkNode(token, left, right);
-    // node->ty = left->ty;
   }
 
   // ptr - ptr 返回两指针间有多少元素
@@ -288,7 +287,7 @@ static Type* declspec(Token** rest, Token* token) {
   }  
 }
 
-// Declarator: '*'* ident Declarator 可以为多重指针
+// Declarator: '*'* Var ([num])? 变量可以为多重指针
 static Node* declarator(Token** rest, Token* token, Type* ty) {
   // 此时便加入符号表，此后的变量出现都只用在符号表中查找
   while ((*rest)->kind == TK_MUL) {
@@ -300,11 +299,20 @@ static Node* declarator(Token** rest, Token* token, Type* ty) {
     errorTok(*rest, "Pineapple~, We need a variable here~");
   }
   Obj* obj = newVar(*rest);
-  obj->ty = ty;
   Node* node = mkLeaf(*rest);
-  node->Var = obj;
   // 将变量 token 消耗
   *rest = (*rest)->next;
+  if ((*rest)->kind == TK_LMB) {
+    // 检测到为数组，吸收 [
+    *rest = (*rest)->next;
+    // 记录下数组元素个数
+    obj->cnt = (*rest)->val;
+    *rest = (*rest)->next;
+    *rest = skip(*rest, "]");
+    ty = arrayOf(ty, obj->cnt);
+  }
+  obj->ty = ty;
+  node->Var = obj;
   return node;
 }
 
@@ -830,7 +838,6 @@ static Type* typeSuffix(Token** rest, Token* token) {
   Type* cur = &head;
   if ((*rest)->kind != TK_RBR) {
     cur->next = copyType(declspec(rest, *rest)); 
-    // 不要浪费 hhh~，变量中已经生成了字符串
     cur->next->var = declarator(rest, *rest, cur->next)->Var;
     cur = cur->next;
     while ((*rest)->kind == TK_COM) {
