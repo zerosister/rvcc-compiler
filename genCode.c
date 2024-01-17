@@ -36,9 +36,15 @@ static int alignTo(int n, int align) {
 static void genAddr(Node *node) {
   if (node->token->kind == TK_VAR) {
     // 偏移量相对于 fp
-    printf("# 获取变量 %s 的栈内地址为 %d(fp)\n", node->Var->Name,
-           node->Var->Offset);
-    printf("\taddi a0,fp,%d\n", node->Var->Offset);
+    if (node->Var->isLocal) {     
+      printf("# 获取变量 %s 的栈内地址为 %d(fp)\n", node->Var->Name,
+            node->Var->Offset);
+      printf("\taddi a0,fp,%d\n", node->Var->Offset);
+    }
+    else {
+      printf("# 获取全局变量 %s 的地址\n", node->Var->Name);
+      printf("\t la a0, %s\n", node->Var->Name);
+    }    
     return;
   }
   if (node->token->kind == TK_DEREF) {
@@ -345,77 +351,117 @@ static void codeGen(Function* func) {
   // 每条语句一个结点，需要遍历每条语句
   current_func = func;
   Node *body = func->Body;
-  assignVarOffsets(func);
-  printf("\n# 定义 %s 段\n", func->funcName);
-  printf("\t.global %s\n", func->funcName);
-  printf("\n #====%s程序开始============\n", func->funcName);
-  printf("# %s 段标签，程序入口段\n", func->funcName);
-  printf("%s:\n", func->funcName);
+  if (func->isFunction) {
+    assignVarOffsets(func);
+    printf("\n# 定义全局 %s 段\n", func->funcName);
+    printf("\t.global %s\n", func->funcName);
+    printf("\n #====%s 段开始============\n", func->funcName);
+    printf("# %s 段标签\n", func->funcName);
+    printf("%s:\n", func->funcName);
 
- // 栈布局
-  //-------------------------------// sp
-  //              ra
-  //-------------------------------// ra = sp-8
-  //              fp
-  //-------------------------------// fp = sp-16
-  //             变量
-  //-------------------------------// sp = sp-16-StackSize
-  //           表达式计算
-  //-------------------------------//
+  // 栈布局
+    //-------------------------------// sp
+    //              ra
+    //-------------------------------// ra = sp-8
+    //              fp
+    //-------------------------------// fp = sp-16
+    //             变量
+    //-------------------------------// sp = sp-16-StackSize
+    //           表达式计算
+    //-------------------------------//
 
-  // pre process
-  // 将 ra 指针压栈，保存 ra 值
-  printf("# 将 ra 压栈，保存返回地址\n");
-  printf("\t addi sp, sp, -8\n");
-  printf("\tsd ra,0(sp)\n");
-  // 将 fp 指针压栈，此时 fp 应当为上一级值
-  printf("# 将当前 fp 压栈，fp 属于“被调用者保存”的寄存器，需要恢复原值\n");
-  printf("\taddi sp,sp,-8\n");
-  printf("\tsd fp,0(sp)\n");
-  // 将 fp 置为当前 sp 值
-  printf("# 将 sp 写入 fp\n ");
-  printf("\tmv fp,sp\n");
-  printf("# sp 腾出 StackSize 大小的栈空间\n");
-  printf("\taddi sp,sp,-%d\n", func->StackSize);
-  // 将传入的参数映射到函数的变量中
-  Type* param = func->params;
-  int paraCnt = 0;
-  while (param) {
-    printf("# 将传入参数赋值给 变量%s\n", param->var->Name);
-    printf("\tsd a%d,%d(fp)\n", paraCnt,param->var->Offset);
-    paraCnt++;
-    param = param->next;
+    // pre process
+    // 将 ra 指针压栈，保存 ra 值
+    printf("# 将 ra 压栈，保存返回地址\n");
+    printf("\taddi sp, sp, -8\n");
+    printf("\tsd ra,0(sp)\n");
+    // 将 fp 指针压栈，此时 fp 应当为上一级值
+    printf("# 将当前 fp 压栈，fp 属于“被调用者保存”的寄存器，需要恢复原值\n");
+    printf("\taddi sp,sp,-8\n");
+    printf("\tsd fp,0(sp)\n");
+    // 将 fp 置为当前 sp 值
+    printf("# 将 sp 写入 fp\n ");
+    printf("\tmv fp,sp\n");
+    printf("# sp 腾出 StackSize 大小的栈空间\n");
+    printf("\taddi sp,sp,-%d\n", func->StackSize);
+    // 将传入的参数映射到函数的变量中
+    Type* param = func->params;
+    int paraCnt = 0;
+    while (param) {
+      printf("# 将传入参数赋值给 变量%s\n", param->var->Name);
+      printf("\tsd a%d,%d(fp)\n", paraCnt,param->var->Offset);
+      paraCnt++;
+      param = param->next;
+    }
+    printf("\n# ====%s 正文部分===============\n", func->funcName);
+    while (body) {
+      genStmt(body);
+      body = body->next;
+    }
+
+    // return 语句生成
+    printf("\n# ====%s程序结束===============\n", func->funcName);
+    printf("# return 标签\n");
+    printf(".L.%s.return:\n", func->funcName);
+    // post process
+    // 将栈复原
+    printf("\taddi sp,sp,%d\n", func->StackSize);
+    // 恢复 fp
+    printf("# 恢复 fp\n");
+    printf("\tld fp,0(sp)\n");
+    printf("\taddi sp,sp,8\n");
+    // 恢复 ra
+    printf("# 恢复 ra, sp\n");
+    printf("\tld ra,0(sp)\n");
+    printf("\taddi sp,sp,8\n");
+    // 栈未清零则报错
+    assert(Depth == 0);
+    printf("# 返回 a0 值给系统调用\n");
+    printf("\tret\n");
   }
-  printf("\n# ====正文部分===============\n");
-  while (body) {
-    genStmt(body);
-    body = body->next;
-  }
-
-  // return 语句生成
-  printf("\n# ====%s程序结束===============\n", func->funcName);
-  printf("# return 标签\n");
-  printf(".L.%s.return:\n", func->funcName);
-  // post process
-  // 将栈复原
-  printf("\taddi sp,sp,%d\n", func->StackSize);
-  // 恢复 fp
-  printf("# 恢复 fp\n");
-  printf("\tld fp,0(sp)\n");
-  printf("\taddi sp,sp,8\n");
-  // 恢复 ra
-  printf("# 恢复 ra, sp\n");
-  printf("\tld ra,0(sp)\n");
-  printf("\taddi sp,sp,8\n");
-  // 栈未清零则报错
-  assert(Depth == 0);
-  printf("# 返回 a0 值给系统调用\n");
-  printf("\tret\n");
 }
 
-void genCode(Function* prog) {
-  while (prog) {
-    codeGen(prog);
-    prog = prog->next;
+static void emitData(HashTable* globals) {
+  if (!globals) {
+    // 若无全局变量，则直接返回，但不会因为函数名也存入了 globals 中
+    return;
+  }
+#if USE_HASH
+  for (int i = 0; i < HASH_SIZE; i++) {
+    Obj* var = globals->objs[i];
+    while (var) {
+      if (var->isFuncName) {
+        var = var->next;
+        continue;
+      }
+      printf("# 数据段标签\n");
+      printf("\t.data\n");
+      printf("\t.global %s\n", var->Name);
+      printf("# 全局变量 %s\n", var->Name);
+      printf("%s:\n", var->Name);
+      printf("# 零填充 %d 位\n", var->ty->size);
+      printf("\t.zero %d\n", var->ty->size);
+      var = var->next;
+    }
+  }
+#else
+    // 读取所有变量，因为头节点没有变量故从 next 开始
+  if (func->Locals->locals) {
+    for (Obj *var = func->Locals->locals->next; var; var = var->next) {
+      // 每个变量分配对应空间
+      offset += var->ty->size;
+      // 记录下每个变量的栈中地址
+      var->Offset = -offset;
+    }
+  }
+#endif
+}
+void genCode(Program* prog) {
+  Function* funcs = prog->funcs;
+  // 生成数据
+  emitData(prog->globals);
+  while (funcs) {
+    codeGen(funcs);
+    funcs = funcs->next;
   }
 }

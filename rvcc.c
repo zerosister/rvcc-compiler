@@ -11,7 +11,7 @@ int main(int argc, char** argv) {
   Token* token = tokenize(argv[1]);
   // 语法分析
   Token** rest = &token;
-  Function* root = parse(rest, token);
+  Program* root = parse(rest, token);
   assert((*rest)->kind == TK_EOF);
   // 代码生成
   genCode(root);

@@ -2,6 +2,9 @@
 
 // 符号表，hash_Table 实现形式
 HashTable* hashTable = NULL;
+// 全局变量 与 函数名
+HashTable* globals = NULL;
+
 
 // 自行构建 token 变量
 static Token multiplyToken = {TK_MUL};
@@ -14,12 +17,12 @@ static Token dereferenceToken = {TK_DEREF};
 // so，回归课程中方法
 // 性质：递归下降
 
-// program = Function*
+// program = (Function | GlobalVar)*
 // Function = Declspec '*'* Var Typesuffix Compound
 // Typesuffix = '(' (Declspec Declarator (, Declspec Declarator)*)? ')'
 // Compound = { (Decla | Stmt)* }
-// Decla = 
-//        Declspec (Declarator ('=' expr)? (',' Declarator ('=' expr)?)*)? ';'
+// Decla = Declspec (Declarator Decla_Prim)? ';'
+// Decla_Prim =  (('=' expr)+(',' Declarator ('=' expr)?)*))?
 // Declspec: 数据类型
 // Declarator: '*'* Var ArrarySuffix 可以为多重指针
 // ArrarySuffix = ('['num']')*
@@ -69,32 +72,54 @@ static Status* unary(Token** rest, Token* token);
 static Node* primary(Token** rest, Token* token);
 static Node* funcArgu(Token** rest, Token* token);
 
+// 得到局部变量
 static HashTable* getHashTable() {
   if (hashTable == NULL) hashTable = calloc(1, sizeof(HashTable));
   return hashTable;
 }
 
+// 得到全局变量
+static HashTable* getGlobals() {
+  if (globals == NULL) globals = calloc(1, sizeof(HashTable));
+  return globals;
+}
+
 #if USE_HASH
 // hash 方法查找本地变量（符号）
-static Obj* findVar(Token* token) {
+static Obj* findLocalVar(Token* token) {
   hashTable = getHashTable();
   return search(hashTable, token->loc, token->len);
 }
 
 // hash 方法新增变量至符号表，而变量只会从 token 中产生
-static Obj* newVar(Token* token) {
-  Obj* var = findVar(token);
+static Obj* newLocalVar(Token* token) {
+  Obj* var = findLocalVar(token);
   if (var == NULL) {
     // 未找到，新建 Obj
     var = insert(getHashTable(), token->loc, token->len);
+    var->isLocal = true;
   }
   return var;
 }
 
+static Obj* findGlobalVar(Token* token) {
+  globals = getGlobals();
+  return search(globals, token->loc, token->len);
+}
+
+static Obj* newGlobalVar(Token* token) {
+  Obj* var = findGlobalVar(token);
+  if (var == NULL) {
+    // 未找到，新建 Obj
+    var = insert(getGlobals(), token->loc, token->len);
+    var->isLocal = false;
+  }
+  return var;
+}
 #else
 
 // 按照名称查找本地变量（符号）
-static Obj* findVar(Token* token) {
+static Obj* findLocalVar(Token* token) {
   HashTable* hashTable = getHashTable();
   if (!hashTable->locals) {
     hashTable->locals = calloc(1, sizeof(Obj));
@@ -115,13 +140,52 @@ static Obj* findVar(Token* token) {
 }
 
 // 新增变量到符号表中
-static Obj* newVar(Token* token) {
+static Obj* newLocalVar(Token* token) {
   // 首先检查是否已在符号表中 (性能优化？哈希表？)
-  Obj* var = findVar(token);
+  Obj* var = findLocalVar(token);
   Obj* locals = getHashTable()->locals;
   if (var == NULL) {
     var = calloc(1, sizeof(Obj));
     var->Name = strndup(token->loc, token->len);
+    var->isLocal = true;
+    // 头插法插入符号表
+    if (locals->next) {
+      var->next = locals->next;
+    }
+    locals->next = var;
+  }
+  return var;
+}
+
+static Obj* findGlobalVar(Token* token) {
+  HashTable* globals = getGlobals();
+  if (!globals->locals) {
+    globals->locals = calloc(1, sizeof(Obj));
+  }
+  Obj* locals = globals->locals;
+  if (locals == NULL) {
+    return NULL;
+  }
+  Obj* cmp = locals->next;
+  while (cmp && !(startsWith(token->loc, cmp->Name) &&
+                  (token->len == strlen(cmp->Name)))) {
+    cmp = cmp->next;
+  }
+  if (cmp && startsWith(token->loc, cmp->Name) &&
+      (token->len == strlen(cmp->Name)))
+    return cmp;
+  return NULL;
+}
+
+// 新增变量到符号表中
+static Obj* newGlobalVar(Token* token) {
+  // 首先检查是否已在符号表中 (性能优化？哈希表？)
+  Obj* var = findLocalVar(token);
+  Obj* locals = getGlobals()->locals;
+  if (var == NULL) {
+    var = calloc(1, sizeof(Obj));
+    var->Name = strndup(token->loc, token->len);
+    var->isLocal = false;
     // 头插法插入符号表
     if (locals->next) {
       var->next = locals->next;
@@ -152,7 +216,11 @@ static Node* mkLeaf(Token* token) {
 static Node* mkVarNode(Token* token) {
   Node* node = mkLeaf(token);
   // 变为符号表后此处有更改，变为 find
-  node->Var = findVar(token);
+  node->Var = findLocalVar(token);
+  if (!node->Var) {
+    // 体现局部变量覆盖全局变量特点
+    node->Var = findGlobalVar(token);
+  }
   return node;
 }
 
@@ -309,58 +377,52 @@ static Type* arraySuffix(Token** rest, Token* token, Type* ty) {
 }
 
 // Declarator: '*'* ArrarySuffix Var  变量可以为多重指针
-static Node* declarator(Token** rest, Token* token, Type* ty) {
+static Node* declarator(Token** rest, Token* token, Type* ty, bool isLocal) {
   // 此时便加入符号表，此后的变量出现都只用在符号表中查找
   while ((*rest)->kind == TK_MUL) {
     // Delcaration 中即使修改 * TK_MUL -> TK_DEREF 也无意义，因为该 token 此后不用
     ty = pointerTo(ty);
     *rest = (*rest)->next;
   }
-  if ((*rest)->kind != TK_VAR) {
+  if ((*rest)->kind != TK_VAR) 
     errorTok(*rest, "Pineapple~, We need a variable here~");
-  }
-  Obj* obj = newVar(*rest);
+  Obj* obj = NULL;
+  // 处理局部变量 或 全局变量
+  if (isLocal) obj = newLocalVar(*rest);
+  else obj = newGlobalVar(*rest);
+  // 自动认为不是函数名，虽然 calloc 时就已经令为 false 了
+  obj->isFuncName = false;
   Node* node = mkLeaf(*rest);
   // 将变量 token 消耗
   *rest = (*rest)->next;
   ty = arraySuffix(rest, *rest, ty);
   obj->ty = ty;
   node->Var = obj;
-  return node;
+  return node;  
 }
 
-// Decla = 
-//        Declspec (Declarator ('=' expr)? (',' Declarator ('=' expr)?)*)? ';'
+// Decla_Prim =  (('=' expr)+(',' Declarator ('=' expr)?)*))?
 // 若为空语句，或者仅仅声明了变量，没有语句进行赋初值，则返回 NULL
-static Node* decla(Token** rest, Token* token) {
-  Type* ty = declspec(rest, token);
-  Node head = {};
+static void decla_Prim(Token** rest, Token* token, Type* ty, Node* declaration, Node* head, bool isLocal) {
   // cur 用于表示当前 变量声明链表 中最后一个
-  Node* cur = &head;
+  Node* cur = head;
   switch ((*rest)->kind) {
-    case TK_SEM:
-      // 空语句 吸收
+    case TK_ASS:
+      // 若定义时同时有赋值
+      token = *rest;
+      // 吸收 =
       *rest = (*rest)->next;
-      return NULL;
-    case TK_VAR:
-    case TK_MUL:
-      // 为变量，将此前的数据类型传入
-      Node* declaration = declarator(rest, *rest, ty);
-      if ((*rest)->kind == TK_ASS) {
-        // 若定义时同时有赋值
-        token = *rest;
-        // 吸收 =
-        *rest = (*rest)->next;
-        declaration = mkNode(token, declaration, expr(rest, *rest)->ptr);
-        // 加入赋初值语句链表中
-        cur->next = declaration;
-        cur = cur->next;
-      }
+      declaration = mkNode(token, declaration, expr(rest, *rest)->ptr);
+      // 加入赋初值语句链表中
+      cur->next = declaration;
+      cur = cur->next;
+      // 同时还需要判断接下来是否为 , 
+    case TK_COM:
       // 若有 ',' 则还需要继续定义变量
       while ((*rest)->kind == TK_COM) {
         *rest = (*rest)->next;
         // 再次用 declaration 获取变量
-        declaration = declarator(rest, *rest, ty);
+        declaration = declarator(rest, *rest, ty, isLocal);
         if ((*rest)->kind == TK_ASS) {
           // 若定义时同时有赋值
           token = *rest;
@@ -373,12 +435,36 @@ static Node* decla(Token** rest, Token* token) {
         }
       }
       *rest = skip(*rest, ";");
+      return;
+    case TK_SEM:
+      *rest = skip(*rest, ";");
+      return;
+    default:
+      // 错误了
+      errorTok(token, "HITer~, Sorry something wrong in initializing or defying arguments");
+  }
+}
+
+// Decla = Declspec (Declarator Decla_Prim)? ';'
+static Node* decla(Token** rest, Token* token) {
+  Node head = {};
+  Type* ty = declspec(rest, token);
+  switch ((*rest)->kind) {
+    case TK_SEM:
+      // 空语句 吸收
+      *rest = (*rest)->next;
+      return NULL;
+    case TK_VAR:
+    case TK_MUL:
+      // 为变量，将此前的数据类型传入
+      Node* declaration = declarator(rest, *rest, ty, true);
+      decla_Prim(rest, *rest, ty, declaration, &head, true);
       return head.next;
     default:
       errorTok(*rest, "Hazard~,Not a variable (>·_·<)");
   }
-  Node* variable = declarator(rest, *rest, ty);
 }
+
 
 // Stmt -> return ExprStmt
 //        | ExprStmt
@@ -881,56 +967,60 @@ static Node* funcArgu(Token** rest, Token* token) {
   return head.next;
 }
 
-// Typesuffix = '(' (Declspec Declarator (, Declspec Declarator)*)? ')'
+// 为函数识别局部变量
+// Typesuffix = '(' (Declspec Declarator (, Declspec Declarator)*)? ')' 
 static Type* typeSuffix(Token** rest, Token* token) {
-  // 吸收函数左括号
-  *rest = skip(token->next, "(");
-  Type head = {};
-  Type* cur = &head;
-  if ((*rest)->kind != TK_RBR) {
-    cur->next = copyType(declspec(rest, *rest)); 
-    cur->next->var = declarator(rest, *rest, cur->next)->Var;
-    cur = cur->next;
-    while ((*rest)->kind == TK_COM) {
-      *rest = skip(*rest, ",");
-      cur->next = declspec(rest, *rest);
-      cur->next->var = declarator(rest, *rest, cur->next)->Var;
+    // 吸收左括号
+    *rest = skip(token, "(");
+    Type head = {};
+    Type* cur = &head;
+    if ((*rest)->kind != TK_RBR) {
+      cur->next = copyType(declspec(rest, *rest)); 
+      // 此时增加的为临时变量
+      cur->next->var = declarator(rest, *rest, cur->next, true)->Var;
       cur = cur->next;
+      while ((*rest)->kind == TK_COM) {
+        *rest = skip(*rest, ",");
+        cur->next = declspec(rest, *rest);
+        cur->next->var = declarator(rest, *rest, cur->next, true)->Var;
+        cur = cur->next;
+      }
     }
-  }
-  *rest = skip(*rest, ")");
-  return head.next;
+    *rest = skip(*rest, ")");
+    return head.next;
 }
 
 // Function = Declspec '*'* Var Typesuffix Compound
 static Function* function(Token** rest, Token* token) {
-  // 获得函数返回值类型
-  Type* retType = declspec(rest, token);
-  while ((*rest)->kind == TK_MUL) {
-    retType = pointerTo(retType);
-    *rest = (*rest)->next; 
+  // 获得函数 返回值或全局变量 的基本类型，如 int** 会记录为 int
+  Type* baseType = declspec(rest, token);
+  // 记录下变量或方程结点
+  Node* tmp = declarator(rest, token, baseType, false);
+  if ((*rest)->kind == TK_LBR) {
+    // 表示为函数
+    tmp->Var->isFuncName = true;
+    Type* params = typeSuffix(rest, *rest);  
+    Node* body = compound(rest, *rest);
+    // 生成当前 Function 结点
+    Function* func = calloc(1, sizeof(Function));
+    func->Locals = getHashTable();
+    func->FType = funcType(tmp->Var->ty);
+    func->funcName = strndup(tmp->Var->Name, strlen(tmp->Var->Name));
+    func->params = params;
+    func->Body = body;
+    func->isFunction = true;
+    return func;
   }
-  token = *rest;
-  // 清空当前函数变量表，每个函数变量不同
-  hashTable = NULL;
-  if (!(token->kind == TK_VAR)) 
-    // 若非函数名
-    errorTok(token, "Dybala~, We need a function name~");
-  // 获取参数链表
-  Type* params = typeSuffix(rest, *rest);
-  Node* body = compound(rest, *rest);
-  // 生成当前 Function 结点
-  Function* func = calloc(1, sizeof(Function));
-  func->Locals = getHashTable();
-  func->FType = funcType(retType);
-  func->funcName = strndup(token->loc, token->len);
-  func->params = params;
-  func->Body = body;
-  return func;
+  // 将全局变量的初始化作为一个 Function 处理
+  // 添加全局变量，传入 baseType 即不含指针的基本类型
+  Function* initGlobals = calloc(1, sizeof(Function));
+  initGlobals->isFunction = false;
+  decla_Prim(rest, *rest, baseType, tmp, initGlobals->Body,false);
+  return initGlobals;
 }
 
-// program = Function*
-Function* parse(Token** rest, Token* token) {
+// program = (Function | GlobalVar)*
+Program* parse(Token** rest, Token* token) {
   Function head = {};
   Function* cur = &head;
   while ((*rest)->kind == TK_INT) {
@@ -938,5 +1028,8 @@ Function* parse(Token** rest, Token* token) {
     cur->next = function(rest, *rest);
     cur = cur->next;
   }
-  return head.next;
+  Program* prog = calloc(1, sizeof(Program));
+  prog->funcs = head.next;
+  prog->globals = globals;
+  return prog;
 }

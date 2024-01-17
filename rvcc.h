@@ -98,6 +98,8 @@ struct Obj {
   struct Obj* next;  // 下一个对象
   int Offset;        // fp 偏移量
   Type *ty;          // 数据类型
+  bool isLocal;      // 记录是否为局部变量
+  bool isFuncName;       // 记录变量为 全局变量 或 函数名
 };
 
 typedef struct HashTable HashTable;
@@ -119,6 +121,7 @@ struct Obj {
   struct Obj* next;  // 下一个对象
   int Offset;        // fp 偏移量
   Type *ty;          // 数据类型
+  bool isFuncName;       // 记录变量为 全局变量 或 函数名
 };
 
 // 方便之后对比，统一用上 hash_table
@@ -140,8 +143,8 @@ struct Node {
   Node* init;  // 存储初始化结点
   Obj* Var;    // 对应变量
   Type* ty;     // 数据类型
-  char* funcName; // 函数名
   Node* argus;  // 函数参数
+  char* funcName;   // 对于函数调用，需要存储函数名
 };
 
 // 表示状态的种类
@@ -177,7 +180,15 @@ struct Function {
   int StackSize;      //栈大小
   Type* FType;        //函数类型
   char* funcName;     //函数名
-  Function* next;     //下一个函数     
+  Function* next;     //下一个函数
+  bool isFunction;    //是函数还是全局变量初始化    
+};
+
+// 程序
+typedef struct Program Program;
+struct Program {
+  Function* funcs;      // 程序的所有方程
+  HashTable* globals;   // 程序全局变量
 };
 
 /************************ 函数声明 *************************/
@@ -194,7 +205,7 @@ bool equal(Token* token, char* str);
 bool startsWith(char* Str, char* SubStr);
 
 // 语法分析入口
-Function* parse(Token** rest, Token* token);
+Program* parse(Token** rest, Token* token);
 
 // 类型分析
 Type* pointerTo(Type *base);
@@ -206,4 +217,4 @@ Type* copyType(Type* ty);
 Type* arrayOf(Type* ty, int cnt);
 
 // 汇编代码生成入口
-void genCode(Function* root);
+void genCode(Program* root);
