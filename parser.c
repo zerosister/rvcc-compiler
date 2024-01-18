@@ -322,6 +322,7 @@ static Node* compound(Token** rest, Token* token) {
     switch ((*rest)->kind) {
       // 当为关键字时， => Decla
       case TK_INT:
+      case TK_CHAR:
         cur->next = decla(rest, *rest);
         // 此处可能不止一个语句
         while (cur->next) {
@@ -353,6 +354,11 @@ static Type* declspec(Token** rest, Token* token) {
       // 吸收 int
       *rest = (*rest)->next;
       return TypeInt;
+    case TK_CHAR:
+      *rest = (*rest)->next;
+      return TypeChar;
+    case TK_EOF:
+      return NULL;  
     default:
       errorTok(token, "Little Dragon~, data structure not defined~");
   }  
@@ -604,6 +610,11 @@ static Status* assign_Prime(Token** rest, Token* token, Node* inherit) {
 static Status* equation(Token** rest, Token* token) {
   Status* equa = newStatus(ST_Equa);
   switch (token->kind) {
+    case TK_NOT:
+      // Equa -> ! Equa，消耗 !
+      *rest = token->next;
+      equa->ptr = mkNode(token, equation(rest, *rest)->ptr, NULL);
+      return equa;
     case TK_LBR:
     case TK_NUM:
     case TK_ADD:
@@ -618,11 +629,6 @@ static Status* equation(Token** rest, Token* token) {
       Status* relation = rela(rest, token);
       Status* equa_P = equation_Prime(rest, *rest, relation->ptr);
       equa->ptr = equa_P->system;
-      return equa;
-    case TK_NOT:
-      // Equa -> ! Equa，消耗 !
-      *rest = token->next;
-      equa->ptr = mkNode(token, equation(rest, *rest)->ptr, NULL);
       return equa;
     default:
       errorTok(token, "Lily~,Something wrong when reducing equation");
@@ -981,9 +987,11 @@ static Type* typeSuffix(Token** rest, Token* token) {
       cur = cur->next;
       while ((*rest)->kind == TK_COM) {
         *rest = skip(*rest, ",");
-        cur->next = declspec(rest, *rest);
+        cur->next = copyType(declspec(rest, *rest));
         cur->next->var = declarator(rest, *rest, cur->next, true)->Var;
         cur = cur->next;
+        // 需要将结点的 next 置为 NULL
+        cur->next = NULL;
       }
     }
     *rest = skip(*rest, ")");
@@ -991,9 +999,7 @@ static Type* typeSuffix(Token** rest, Token* token) {
 }
 
 // Function = Declspec '*'* Var Typesuffix Compound
-static Function* function(Token** rest, Token* token) {
-  // 获得函数 返回值或全局变量 的基本类型，如 int** 会记录为 int
-  Type* baseType = declspec(rest, token);
+static Function* function(Token** rest, Token* token, Type* baseType) {
   // 记录下变量或方程结点
   Node* tmp = declarator(rest, token, baseType, false);
   if ((*rest)->kind == TK_LBR) {
@@ -1023,10 +1029,11 @@ static Function* function(Token** rest, Token* token) {
 Program* parse(Token** rest, Token* token) {
   Function head = {};
   Function* cur = &head;
-  while ((*rest)->kind == TK_INT) {
-    // 目前只支持的基础数据类型为 int
-    cur->next = function(rest, *rest);
+  Type* baseType = declspec(rest, token);
+  while (baseType != NULL) { 
+    cur->next = function(rest, *rest, baseType);
     cur = cur->next;
+    baseType = declspec(rest, *rest);
   }
   Program* prog = calloc(1, sizeof(Program));
   prog->funcs = head.next;

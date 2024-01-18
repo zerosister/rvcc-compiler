@@ -152,7 +152,7 @@ static bool isIdent2(char c) { return isIdent1(c) || ('0' <= c && c <= '9'); }
 
 // 判断是否为关键字
 static int specify_keyWord(Token* token) {
-  static char* keyWords[] = {"return", "if", "else", "for", "while", "int", "sizeof"};
+  static char* keyWords[] = {"return", "if", "else", "for", "while", "int", "sizeof", "char"};
   // 指针数组大小 / 指针大小 = 指针个数
   for (int i = 0; i < sizeof(keyWords) / sizeof(*keyWords); i++) {
     if (equal(token, keyWords[i])) {
@@ -171,6 +171,8 @@ static int specify_keyWord(Token* token) {
           return TK_INT;
         case 6:
           return TK_SIZEOF;
+        case 7:
+          return TK_CHAR;
         default:
           break;
       }

@@ -2,9 +2,10 @@
 
 //  (Type){...} 构造一个复合字面量，相当于 Type 的匿名变量
 Type *TypeInt = &(Type){TY_INT, .size = 8};
+Type *TypeChar = &(Type){TY_CHAR, .size = 1};
 
-// 判断 Type 是否为 int 类型
-bool isInteger(Type *ty) { return ty->tyKind == TY_INT; }
+// 判断 Type 是否为 整型 类型
+bool isInteger(Type *ty) { return ty->tyKind == TY_INT || ty->tyKind == TY_CHAR; }
 
 // 判断 Type 是否为 ptr 类型，或为 array 类型
 // 只要 base 非 NULL 表示为指针或数组 

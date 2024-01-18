@@ -62,7 +62,22 @@ static void load(Type* ty) {
     return;
   // 将变量 load 至 a0
   printf("# 读取 a0 中存放的地址，得到值存入 a0\n");
-  printf("\tld a0,0(a0)\n");
+  if (ty->size == 1) 
+    printf("\tlb a0,0(a0)\n"); 
+  else
+    printf("\tld a0,0(a0)\n");
+}
+
+// 将 a0 存储至指定内存中
+static void store(Type* ty) {
+  // 将左部地址存入 a1
+  Pop("a1");
+  // 将右值放入左结点变量中
+  printf("# 将 a0 值，写入 a1 存放的地址中\n");
+  if (ty->size == 1) 
+    printf("\tsb a0,0(a1)\n");
+  else 
+    printf("\tsd a0,0(a1)\n");
 }
 
 // 计数程序
@@ -125,11 +140,7 @@ static void genExpr(Node* root) {
       Push();
       // 产生右值
       genExpr(root->RNode);
-      // 将左部地址存入 a1
-      Pop("a1");
-      // 将右值放入左结点变量中
-      printf("# 将 a0 值，写入 a1 存放的地址中\n");
-      printf("\tsd a0,0(a1)\n");
+      store(root->LNode->ty);
       return;
     case TK_FUNC: 
       printf("\n# 调用函数%s\n",root->funcName);
@@ -389,7 +400,11 @@ static void codeGen(Function* func) {
     int paraCnt = 0;
     while (param) {
       printf("# 将传入参数赋值给 变量%s\n", param->var->Name);
-      printf("\tsd a%d,%d(fp)\n", paraCnt,param->var->Offset);
+      if (param->var->ty->size == 1) {
+        printf("\tsb a%d,%d(fp)\n", paraCnt,param->var->Offset); 
+      }
+      else 
+        printf("\tsd a%d,%d(fp)\n", paraCnt,param->var->Offset);
       paraCnt++;
       param = param->next;
     }

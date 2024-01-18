@@ -49,6 +49,7 @@ typedef enum {
   TK_LMB,    // [
   TK_RMB,    // ]
   TK_SIZEOF, // sizeof
+  TK_CHAR,   // char
   TK_EOF     //终结符
 } TokenKind;
 
@@ -65,6 +66,7 @@ struct Token {
 // 类型种类
 typedef enum {
   TY_INT, // int 整型
+  TY_CHAR,  // char
   TY_PTR, // 指针
   TY_ARRAY, //数组
   TY_FUNC // 函数
@@ -87,6 +89,7 @@ struct Type {
 
 // 声明全局变量，在 type.c 中定义
 extern Type *TypeInt;
+extern Type *TypeChar;
 
 // 交给预处理器判断编译 rvcc.h 中的哪个 Obj
 #if USE_HASH
