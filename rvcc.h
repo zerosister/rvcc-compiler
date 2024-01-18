@@ -50,6 +50,8 @@ typedef enum {
   TK_RMB,    // ]
   TK_SIZEOF, // sizeof
   TK_CHAR,   // char
+  TK_DQU,    // "
+  TK_CHL,    // 字符型字面量
   TK_EOF     //终结符
 } TokenKind;
 
@@ -91,8 +93,6 @@ struct Type {
 extern Type *TypeInt;
 extern Type *TypeChar;
 
-// 交给预处理器判断编译 rvcc.h 中的哪个 Obj
-#if USE_HASH
 // hash_size 即为 hash 桶的个数
 #define HASH_SIZE 13
 struct Obj {
@@ -103,6 +103,7 @@ struct Obj {
   Type *ty;          // 数据类型
   bool isLocal;      // 记录是否为局部变量
   bool isFuncName;       // 记录变量为 全局变量 或 函数名
+  char* initData;     // 字符串字面量初始化信息
 };
 
 typedef struct HashTable HashTable;
@@ -115,24 +116,6 @@ unsigned int hash(char* Name, int size, int len);
 Obj* insert(HashTable* hashTable, char* Name, int len);
 Obj* search(HashTable* hashTable, char* Name, int len);
 void remove_hash(HashTable* hashTable, char* Name);
-#else
-// 本地变量（符号表）思考：每个方程有不同的符号表，故可以变量重名
-typedef struct Obj Obj;
-struct Obj {
-  char* Name;        // 变量名
-  int value;         // 哈希值，防止每次都调用 hash 函数
-  struct Obj* next;  // 下一个对象
-  int Offset;        // fp 偏移量
-  Type *ty;          // 数据类型
-  bool isFuncName;       // 记录变量为 全局变量 或 函数名
-};
-
-// 方便之后对比，统一用上 hash_table
-typedef struct HashTable HashTable;
-struct HashTable {
-  Obj* locals;
-};
-#endif
 
 // AST(抽象语法树) 节点
 typedef struct Node Node;

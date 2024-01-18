@@ -107,6 +107,8 @@ static int specify_puntc(char* p) {
       return TK_LMB;
     case ']':
       return TK_RMB;
+    case '"':
+      return TK_DQU;
     default:
       errorAt(p, "Darling T.T ~~ I can't deal with this punctuation");
   }
@@ -127,6 +129,21 @@ static int getNumber(Token* token) {
   } else
     return token->val;
   return 1;
+}
+
+// 识别字符串字面量
+static Token* strLiteral(char* p) {
+  // 吸收 "
+  p = p + 1;
+  char* start = p;
+  while (*p != '"') {
+    // 未到字符串终结
+    if (*p == '\n' || *p == '\0') {
+      errorAt(p, "Szro~,不正确的字符串字面量 <-_->\n");
+    }
+    p += 1;
+  }
+  return newToken(TK_CHL, 0, start, p - start);
 }
 
 // skip 期待得到指定符号
@@ -216,6 +233,12 @@ Token* tokenize(char* p) {
         case TK_LSE:
           len = 2;
           break;
+        case TK_DQU:
+          cur->next = strLiteral(p);
+          cur =  cur->next;
+          // 吸收 "
+          p = cur->loc + cur->len + 1;
+          continue;
         default:
           break;
       }

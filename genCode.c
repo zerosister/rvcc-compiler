@@ -43,7 +43,7 @@ static void genAddr(Node *node) {
     }
     else {
       printf("# 获取全局变量 %s 的地址\n", node->Var->Name);
-      printf("\t la a0, %s\n", node->Var->Name);
+      printf("\tla a0, %s\n", node->Var->Name);
     }    
     return;
   }
@@ -332,7 +332,6 @@ static void genStmt(Node* root) {
 // 根据变量链表计算出偏移量
 static void assignVarOffsets(Function *func) {
   int offset = 0;
-#if USE_HASH
   // 读取所有变量
   for (int i = 0; i < HASH_SIZE; i++) {
     Obj *var = func->Locals->objs[i];
@@ -343,17 +342,6 @@ static void assignVarOffsets(Function *func) {
       var = var->next;
     }
   }
-#else
-  // 读取所有变量，因为头节点没有变量故从 next 开始
-  if (func->Locals->locals) {
-    for (Obj *var = func->Locals->locals->next; var; var = var->next) {
-      // 每个变量分配对应空间
-      offset += var->ty->size;
-      // 记录下每个变量的栈中地址
-      var->Offset = -offset;
-    }
-  }
-#endif
   // 将栈对齐到 16 字节
   func->StackSize = alignTo(offset, 16);
 }
@@ -366,6 +354,8 @@ static void codeGen(Function* func) {
     assignVarOffsets(func);
     printf("\n# 定义全局 %s 段\n", func->funcName);
     printf("\t.global %s\n", func->funcName);
+    printf("# 代码段标签\n");
+    printf("\t.text\n");
     printf("\n #====%s 段开始============\n", func->funcName);
     printf("# %s 段标签\n", func->funcName);
     printf("%s:\n", func->funcName);
@@ -441,7 +431,6 @@ static void emitData(HashTable* globals) {
     // 若无全局变量，则直接返回，但不会因为函数名也存入了 globals 中
     return;
   }
-#if USE_HASH
   for (int i = 0; i < HASH_SIZE; i++) {
     Obj* var = globals->objs[i];
     while (var) {
@@ -451,25 +440,26 @@ static void emitData(HashTable* globals) {
       }
       printf("# 数据段标签\n");
       printf("\t.data\n");
-      printf("\t.global %s\n", var->Name);
-      printf("# 全局变量 %s\n", var->Name);
-      printf("%s:\n", var->Name);
-      printf("# 零填充 %d 位\n", var->ty->size);
-      printf("\t.zero %d\n", var->ty->size);
+      if (var->initData) {
+        printf("%s:\n", var->Name);
+        for (int i = 0; i < var->ty->size; i++) {
+          char ch = var->initData[i];
+          if (isprint(ch)) 
+            printf("\t.byte %d\t# 字符：%c\n", ch, ch);
+          else
+            printf("\t.byte %d\n", ch);
+        }
+      }
+      else {
+        printf("\t.global %s\n", var->Name);
+        printf("# 全局变量 %s\n", var->Name);
+        printf("%s:\n", var->Name);
+        printf("# 零填充 %d 位\n", var->ty->size);
+        printf("\t.zero %d\n", var->ty->size);
+      }
       var = var->next;
     }
   }
-#else
-    // 读取所有变量，因为头节点没有变量故从 next 开始
-  if (func->Locals->locals) {
-    for (Obj *var = func->Locals->locals->next; var; var = var->next) {
-      // 每个变量分配对应空间
-      offset += var->ty->size;
-      // 记录下每个变量的栈中地址
-      var->Offset = -offset;
-    }
-  }
-#endif
 }
 void genCode(Program* prog) {
   Function* funcs = prog->funcs;

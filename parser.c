@@ -11,6 +11,7 @@ static Token multiplyToken = {TK_MUL};
 static Token divisionToken = {TK_DIV};
 static Token addToken = {TK_ADD};
 static Token dereferenceToken = {TK_DEREF};
+static Token varToken = {TK_VAR};
 
 // 非递归的语法分析，发现 LL(1) 文法用栈其实无法解决本质问题
 // 因为仅仅为生成产生式时有用，附加语义动作则需要在 parse 中同时进行
@@ -84,7 +85,28 @@ static HashTable* getGlobals() {
   return globals;
 }
 
-#if USE_HASH
+// 新增唯一名称
+static char* newUniqueName(void) {
+  static int Id = 0;
+  char *Buf = calloc(1, 20);
+  // 将格式化处理过后的字符串存入 Buf
+  sprintf(Buf, ".L..%d", Id++);
+  return Buf;
+}
+
+static Node *newStrLiteral(Token* token) {
+  // 直接新建变量
+  Obj* var = insert(getGlobals(), newUniqueName(), 20);
+  var->isLocal = false;
+  Type* ty = arrayOf(TypeChar, token->len + 1);
+  var->ty = ty;
+  var->initData = strndup(token->loc, token->len);
+  Node* node = calloc(1, sizeof(Node));
+  node->token = &varToken;
+  node->Var = var;
+  return node;
+}
+
 // hash 方法查找本地变量（符号）
 static Obj* findLocalVar(Token* token) {
   hashTable = getHashTable();
@@ -116,86 +138,6 @@ static Obj* newGlobalVar(Token* token) {
   }
   return var;
 }
-#else
-
-// 按照名称查找本地变量（符号）
-static Obj* findLocalVar(Token* token) {
-  HashTable* hashTable = getHashTable();
-  if (!hashTable->locals) {
-    hashTable->locals = calloc(1, sizeof(Obj));
-  }
-  Obj* locals = hashTable->locals;
-  if (locals == NULL) {
-    return NULL;
-  }
-  Obj* cmp = locals->next;
-  while (cmp && !(startsWith(token->loc, cmp->Name) &&
-                  (token->len == strlen(cmp->Name)))) {
-    cmp = cmp->next;
-  }
-  if (cmp && startsWith(token->loc, cmp->Name) &&
-      (token->len == strlen(cmp->Name)))
-    return cmp;
-  return NULL;
-}
-
-// 新增变量到符号表中
-static Obj* newLocalVar(Token* token) {
-  // 首先检查是否已在符号表中 (性能优化？哈希表？)
-  Obj* var = findLocalVar(token);
-  Obj* locals = getHashTable()->locals;
-  if (var == NULL) {
-    var = calloc(1, sizeof(Obj));
-    var->Name = strndup(token->loc, token->len);
-    var->isLocal = true;
-    // 头插法插入符号表
-    if (locals->next) {
-      var->next = locals->next;
-    }
-    locals->next = var;
-  }
-  return var;
-}
-
-static Obj* findGlobalVar(Token* token) {
-  HashTable* globals = getGlobals();
-  if (!globals->locals) {
-    globals->locals = calloc(1, sizeof(Obj));
-  }
-  Obj* locals = globals->locals;
-  if (locals == NULL) {
-    return NULL;
-  }
-  Obj* cmp = locals->next;
-  while (cmp && !(startsWith(token->loc, cmp->Name) &&
-                  (token->len == strlen(cmp->Name)))) {
-    cmp = cmp->next;
-  }
-  if (cmp && startsWith(token->loc, cmp->Name) &&
-      (token->len == strlen(cmp->Name)))
-    return cmp;
-  return NULL;
-}
-
-// 新增变量到符号表中
-static Obj* newGlobalVar(Token* token) {
-  // 首先检查是否已在符号表中 (性能优化？哈希表？)
-  Obj* var = findLocalVar(token);
-  Obj* locals = getGlobals()->locals;
-  if (var == NULL) {
-    var = calloc(1, sizeof(Obj));
-    var->Name = strndup(token->loc, token->len);
-    var->isLocal = false;
-    // 头插法插入符号表
-    if (locals->next) {
-      var->next = locals->next;
-    }
-    locals->next = var;
-  }
-  return var;
-}
-#endif
-
 // 生成新的内结点
 static Node* mkNode(Token* token, Node* left, Node* right) {
   Node* node = calloc(1, sizeof(Node));
@@ -573,6 +515,7 @@ static Status* assign(Token** rest, Token* token) {
     case TK_MUL:
     case TK_ADDR:
     case TK_SIZEOF:
+    case TK_CHL:
       // Assign -> Equa Assign'
       Status* equa = equation(rest, token);
       Status* ass_P = assign_Prime(rest, *rest, equa->ptr);
@@ -625,6 +568,7 @@ static Status* equation(Token** rest, Token* token) {
     case TK_MUL:
     case TK_ADDR:
     case TK_SIZEOF:
+    case TK_CHL:
       // Equa -> Rela Equa'
       Status* relation = rela(rest, token);
       Status* equa_P = equation_Prime(rest, *rest, relation->ptr);
@@ -677,6 +621,7 @@ static Status* rela(Token** rest, Token* token) {
     case TK_MUL:
     case TK_ADDR:
     case TK_SIZEOF:
+    case TK_CHL:
       // Rela -> E Rela'
       Status* addition = add(rest, token);
       Status* relat_P = rela_Prime(rest, *rest, addition->ptr);
@@ -735,6 +680,7 @@ static Status* add(Token** rest, Token* token) {
     case TK_MUL:
     case TK_ADDR:
     case TK_SIZEOF:
+    case TK_CHL:
       // 递归进入 Mul 识别
       Status* mult = mul(rest, token);
       // 传递继承属性到 Add'识别
@@ -802,6 +748,7 @@ static Status* mul(Token** rest, Token* token) {
     case TK_MUL:
     case TK_ADDR:
     case TK_SIZEOF:
+    case TK_CHL:
       Status* prim = unary(rest, token);
       Status* mult_P = mul_Prime(rest, *rest, prim->ptr);
       mult->ptr = mult_P->system;
@@ -921,7 +868,7 @@ static Node* primary(Token** rest, Token* token) {
       // 识别到 Primary -> num
       *rest = token->next;
       return mkLeaf(token);
-    case TK_VAR:{
+    case TK_VAR: {
       // 识别到变量
       Node* var = mkVarNode(token);
       *rest = token->next;
@@ -932,6 +879,11 @@ static Node* primary(Token** rest, Token* token) {
         var->funcName = strndup(token->loc, token->len);
       }
       return var;
+    }
+    case TK_CHL: {
+      // 识别到字符型字面量，新建变量并得到变量结点
+      *rest = token->next;
+      return newStrLiteral(token);
     }
     case TK_SIZEOF: {
       // 吸收 sizeof
