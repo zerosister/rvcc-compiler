@@ -7,6 +7,7 @@ int main(int argc, char** argv) {
     // 参数异常处理
     error("%s:  invalid number of arguments", argv[0]);
   }
+  // argv[1] = "int main() { return \"\\x77\"[0]; }";
   // 分词
   Token* token = tokenize(argv[1]);
   // 语法分析

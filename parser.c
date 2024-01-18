@@ -80,7 +80,7 @@ static HashTable* getHashTable() {
 }
 
 // 得到全局变量
-static HashTable* getGlobals() {
+static HashTable* getGlobals(void) {
   if (globals == NULL) globals = calloc(1, sizeof(HashTable));
   return globals;
 }
@@ -88,10 +88,7 @@ static HashTable* getGlobals() {
 // 新增唯一名称
 static char* newUniqueName(void) {
   static int Id = 0;
-  char *Buf = calloc(1, 20);
-  // 将格式化处理过后的字符串存入 Buf
-  sprintf(Buf, ".L..%d", Id++);
-  return Buf;
+  return format(".L..%d", Id++);
 }
 
 static Node *newStrLiteral(Token* token) {
@@ -100,7 +97,7 @@ static Node *newStrLiteral(Token* token) {
   var->isLocal = false;
   Type* ty = arrayOf(TypeChar, token->len + 1);
   var->ty = ty;
-  var->initData = strndup(token->loc, token->len);
+  var->initData = strndup(token->str, token->len);
   Node* node = calloc(1, sizeof(Node));
   node->token = &varToken;
   node->Var = var;
@@ -989,6 +986,6 @@ Program* parse(Token** rest, Token* token) {
   }
   Program* prog = calloc(1, sizeof(Program));
   prog->funcs = head.next;
-  prog->globals = globals;
+  prog->globals = getGlobals();
   return prog;
 }

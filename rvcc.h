@@ -63,6 +63,7 @@ struct Token {
   int val;         //值
   char* loc;       //字符串中位置
   int len;         //长度
+  char* str;       //字符串字面量值
 };
 
 // 类型种类
@@ -204,3 +205,6 @@ Type* arrayOf(Type* ty, int cnt);
 
 // 汇编代码生成入口
 void genCode(Program* root);
+
+// 字符串处理
+char* format(char* Fmt, ...);

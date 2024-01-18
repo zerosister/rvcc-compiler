@@ -131,10 +131,8 @@ static int getNumber(Token* token) {
   return 1;
 }
 
-// 识别字符串字面量
-static Token* strLiteral(char* p) {
-  // 吸收 "
-  p = p + 1;
+// 读取到字符串字面量的结尾
+static char* strLiteralEnd(char* p) {
   char* start = p;
   while (*p != '"') {
     // 未到字符串终结
@@ -142,8 +140,93 @@ static Token* strLiteral(char* p) {
       errorAt(p, "Szro~,不正确的字符串字面量 <-_->\n");
     }
     p += 1;
+    if (*p == '\\') {
+      // 若为转义符则跳过下一个字符
+      p += 1;
+    }
   }
-  return newToken(TK_CHL, 0, start, p - start);
+  return p;
+}
+
+static int spec_Hex(char* ch) {
+  if (*ch >= '0' && *ch <= '9') 
+    return *ch - '0';
+  if (*ch >= 'A' && *ch <= 'F') 
+    return *ch - 'A' + 10;
+  if (*ch >= 'a' && *ch <= 'f') 
+    return *ch - 'a' + 10;
+  errorAt(ch, "Yanzu~, Maybe not a hex");
+}
+
+static int specify_char(char** pos, char* ch) {
+  // 识别八进制 \abc = (((a*8)+b)*8)+c 最多 3 位
+  if (*ch >= '0' && *ch <= '7') {
+    int num = *ch - '0';
+    ch++;
+    if (*ch >= '0' && *ch <= '7') {
+      num = num * 8 + (*ch - '0');
+      if (*(ch + 1) >= '0' && *(ch + 1) <= '7') {
+        ch++;
+        num = num * 8 + (*ch - '0');
+      }  
+    }
+    *pos = ch;
+    return num;
+  }
+
+  if (*ch == 'x') {
+    // 进入十六进制识别
+    int cnt = 1;
+    int num = spec_Hex(++ch);
+    while (isxdigit(*(++ch))) {
+      num = (num << 4) + spec_Hex(ch);
+    }
+    *pos = ch - 1;
+    return num;
+  }
+  
+  *pos = *pos + 1;
+  switch (*ch) {
+    case 'a': // 响铃（警报）
+      return '\a';
+    case 'b': // 退格
+      return '\b';
+    case 't': // 水平制表符，tab
+      return '\t';
+    case 'n': // 换行
+      return '\n';
+    case 'v': // 垂直制表符
+      return '\v';
+    case 'f': // 换页
+      return '\f';
+    case 'r': // 回车
+      return '\r';
+    // 属于 GNU C 拓展
+    case 'e': // 转义符
+      return 27;
+    default: // 默认将原字符返回
+      return *ch;
+  }
+}
+
+// 识别字符串字面量
+static Token* strLiteral(char* p) {
+  // 吸收 "
+  p = p + 1;
+  char* start = p;
+  char* end = strLiteralEnd(start);
+  char* buf = calloc(1, end - start);
+  int len = 0;
+  for (; p < end; p++) {
+    if (*p == '\\') {
+      buf[len++] = specify_char(&p, p + 1);
+    }
+    else
+      buf[len++] = *p;
+  }
+  Token* token = newToken(TK_CHL, 0, start, end - start);
+  token->str = buf;
+  return token;
 }
 
 // skip 期待得到指定符号
