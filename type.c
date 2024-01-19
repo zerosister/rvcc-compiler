@@ -44,6 +44,19 @@ Type* arrayOf(Type* ty, int cnt) {
   return arrayType;
 }
 
+void stmtExType(Node* node) {
+  if (!node || node->ty) 
+    return;
+  Node* body = node->body;
+  Node* pre;
+  while (body) {
+    // pre 记录下链表最后一个结点
+    pre = body;
+    body = body->next;
+  }
+  node->ty = pre->ty;
+}
+
 // 为结点内所有需要类型检查结点添加类型
 void addType(Node *node) {
   // 若结点为空或已经有值，直接返回

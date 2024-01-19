@@ -147,6 +147,11 @@ static void genExpr(Node* root) {
       genFuncall(root->argus);
       printf("\tcall %s\n", root->funcName);
       return;
+    case TK_StmtEx:
+      // 将 token kind 改回 TK_LBB, 进行 块语句生成
+      token_root->kind = TK_LBB;
+      genStmt(root);
+      return;
     default:
       break;
   }

@@ -52,6 +52,7 @@ typedef enum {
   TK_CHAR,   // char
   TK_DQU,    // "
   TK_CHL,    // 字符型字面量
+  TK_StmtEx,  // GNU 支持的语句表达式 ({})
   TK_EOF     //终结符
 } TokenKind;
 
@@ -202,6 +203,7 @@ bool isInteger(Type *ty);
 bool isPtr(Type *ty);
 Type* copyType(Type* ty);
 Type* arrayOf(Type* ty, int cnt);
+void stmtExType(Node* node);
 
 // 汇编代码生成入口
 void genCode(Program* root);

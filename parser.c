@@ -50,8 +50,13 @@ static Token varToken = {TK_VAR};
 //          | * Unary 
 //          | & Unary 
 //          | Primary ('[' Expr ']')*
-// Primary -> num | Var | Var FuncArgu | '('Expr')' | sizeof Unary
-//          
+// Primary -> num 
+//            | Var 
+//            | Var FuncArgu 
+//            | '('Expr')'
+//            | sizeof Unary
+//            | '(' StmtEx ')'
+// StmtEx -> Compound 
 // FuncArgu -> '(' Assign? (, Assign)* ')'
 
 static Node* compound(Token** rest, Token* token);
@@ -849,18 +854,43 @@ static Status* unary(Token** rest, Token* token) {
   }
 }
 
-// Primary -> num | Var | Var FuncArgu | '('Expr')' | sizeof Unary
+// StmtEx -> Compound 
+static Node* stmtEx(Token** rest, Token* token) {
+
+}
+
+// Primary -> num 
+//            | Var 
+//            | Var FuncArgu 
+//            | '('Expr')'
+//            | sizeof Unary
+//            | '(' StmtEx ')'
 static Node* primary(Token** rest, Token* token) {
   switch (token->kind) {
-    case TK_LBR:
-      // 识别到 Primary -> (Expr)
+    case TK_LBR: {
+      // 识别到 Primary -> (Expr) 或语句表达式
+      Node* node = NULL;
       *rest = token->next;
-      token = token->next;
-      Status* equa = expr(rest, token);
+      switch ((*rest)->kind) {
+        case TK_LBB:
+        // 语句表达式
+        token = *rest;
+        node = compound(rest, *rest);
+        stmtExType(node);
+        // 将语句进行标记，codeGen 中进行 类似 Compound 的处理
+        token->kind = TK_StmtEx;
+          break;
+        default:
+          token = token->next;
+          Status* equa = expr(rest, token);
+          node = equa->ptr;
+          break;
+      }
       // 同时此时需要消耗 )
       token = *rest;
       *rest = skip(token, ")");
-      return equa->ptr;
+      return node;
+    }
     case TK_NUM:
       // 识别到 Primary -> num
       *rest = token->next;
