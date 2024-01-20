@@ -2,7 +2,7 @@
 #告诉操作系统应当用/bin/bash来处理此脚本
 
 # 查看脚本输出内容 
-# set -x
+set -x
 
 # 将下列代码编译为tmp2.o，"-xc"强制以c语言进行编译
 cat <<EOF | ~/riscv/bin/riscv64-unknown-linux-gnu-gcc -xc -c -o tmp2.o -
@@ -23,7 +23,8 @@ assert(){
     expected="$1"
     # 输入值为 参数2
     input="$2"
-    ./rvcc "$input" > tmp.s|| exit
+    # 表示将 input 作为 ./rvcc 的输入 - 表示 rvcc 从标准输入中读取
+    echo "$input" | ./rvcc - > tmp.s|| exit
     #编译rvcc产生的汇编文件
     $RISCV/bin/riscv64-unknown-linux-gnu-gcc -static -o tmp tmp.s tmp2.o 
     #运行生成文件

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "stdbool.h"
 
@@ -187,7 +188,8 @@ void errorTok(Token* token, char* Fmt, ...);
 void error(char* Fmt, ...);
 
 // 词法分析入口
-Token* tokenize(char* p);
+// Token* tokenize(char* p);
+Token* tokenizeFile(char* path);
 Token* skip(Token* token, char* str);
 bool equal(Token* token, char* str);
 bool startsWith(char* Str, char* SubStr);

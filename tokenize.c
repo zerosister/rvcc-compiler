@@ -2,6 +2,8 @@
 
 // 输入的字符串
 static char* currentInput;
+// 当前文件
+static char* currentFile;
 
 /************************** 错误处理 **************************/
 // 运行程序时参数出错
@@ -16,14 +18,40 @@ void error(char* Fmt, ...) {
 
 // 输出错误出现位置，并退出
 void verrorAt(char* loc, char* Fmt, va_list VA) {
+  // 获取某行第一个字符
+  char* first = currentInput;
+  int lineNum = 1;
+  char* cur = first;
+  while (cur < loc) {
+    if (*cur == '\n' && cur != loc) {
+      lineNum ++;
+      first = cur + 1;
+    }
+    cur ++;
+  }
+  // 该行的末尾
+  char* end = first;
+  while (*end != '\n') {
+    end ++;
+  }
+  
   // 输出源信息
-  fprintf(stderr, "%s\n", currentInput);
-
+  fprintf(stderr, "%s Line %d:", currentFile, lineNum);
+  for (cur = first; cur < end; cur++) {
+    fprintf(stderr, "%c", *cur);
+  }
   // 输出出错信息
-  // 计算出错位置，loc 为出错位置指针，currentInput 为当前输入首地址
-  int pos = loc - currentInput;
+  // 计算出错位置，loc 为出错位置指针，first 为当前输入行首地址
+  int pos = loc - first;
+  // 计算行号占了几个字符
+  int posNum = 0;
+  while (lineNum > 0) {
+    lineNum /= 10;
+    posNum ++;
+  }
+  pos += strlen(currentFile) + posNum + 7;
   // 将字符串补齐 pos 位，%*s 允许传递一个整数参数输出相应长度空格:)
-  fprintf(stderr, "%*s", pos, "");
+  fprintf(stderr, "\n%*s", pos, "");
   fprintf(stderr, "^ ");
   // 报错信息
   vfprintf(stderr, Fmt, VA);
@@ -282,7 +310,7 @@ static int specify_keyWord(Token* token) {
 }
 
 // 终结符解析
-Token* tokenize(char* p) {
+static Token* tokenize(char* p) {
   // 使用一个链表进行存储各个 Token
   // head 表示链表头
   currentInput = p;
@@ -354,3 +382,58 @@ Token* tokenize(char* p) {
   // 因为头节点不存储信息故返回 head->next
   return head.next;
 }
+
+// 读文件
+static char* readFile(char* path) {
+  currentFile = path;
+  FILE* fp;
+
+  if (strcmp(path, "-") == 0) {
+    // 若文件名为 "-",则从 stdin 中读取 
+    fp = stdin;
+  }
+  else {
+    fp = fopen(path, "r");
+    if (!fp) {
+      // errno 为系统最后一次的错误代码
+      // strerror 以字符串形式输出错误代码
+      error("Precious~, cannot open %s: %s", path, strerror(errno));
+    }
+  }
+
+  // 要返回的字符串
+  char* buf;
+  size_t bufLen;
+  FILE* out = open_memstream(&buf, &bufLen);
+
+  // 读取整个文件
+  while (true) {
+    char buf2[4096];
+    // fread 从文件流中读取数据至数组
+    // 缓冲数组 buf2 先按照元素大小 1 读取 fp，n 为返回实际读取的元素个数
+    int n = fread(buf2, 1, sizeof(buf2), fp);
+    if (n == 0) 
+      // 表示已经读完整个文件
+      break;
+    // 数组指针 buf2，数组元素大小 1，实际元素个数 n, 文件流指针
+    fwrite(buf2, 1, n, out);
+  }
+
+  // 完成读取，非标准输入的文件全部关闭
+  if (fp != stdin) 
+    fclose(fp);
+  
+  // 刷新流的输出缓冲区，确保内容输出至流中
+  fflush(out);
+  // 确保最后一行以 '\n' 结尾
+  if (bufLen == 0 || buf[bufLen - 1] != '\n') {
+    // 将字符输出至流中
+    fputc('\n', out);
+  }
+  fputc('\0', out);
+  fclose(out);
+  return buf;
+}
+
+// 对文件进行分词
+Token* tokenizeFile(char* path) { return tokenize(readFile(path)); }

@@ -243,7 +243,7 @@ static void genExpr(Node* root) {
     default:
       break;
   }
-  error("apple~,we met invalid expression q_q");
+  errorTok(token_root, "apple~,we met invalid expression q_q");
 }
 
 static void genStmt(Node* root) {

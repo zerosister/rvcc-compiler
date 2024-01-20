@@ -164,6 +164,9 @@ static Node* mkVarNode(Token* token) {
   if (!node->Var) {
     // 体现局部变量覆盖全局变量特点
     node->Var = findGlobalVar(token);
+    if(!node->Var)
+      // 表示没有此变量
+      errorTok(token, "Rose~,Unexpected variable");
   }
   return node;
 }

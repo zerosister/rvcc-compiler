@@ -9,7 +9,7 @@ int main(int argc, char** argv) {
   }
   // argv[1] = "int main() { return ({ 1; }) + ({ 2; }) + ({ 3; }); }";
   // 分词
-  Token* token = tokenize(argv[1]);
+  Token* token = tokenizeFile(argv[1]);
   // 语法分析
   Token** rest = &token;
   Program* root = parse(rest, token);

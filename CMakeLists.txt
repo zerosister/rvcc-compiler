@@ -10,6 +10,10 @@ add_executable(rvcc
     parser.c
     tokenize.c
     genCode.c
+    optimate.c
+    strings.c
+    rvcc.h
+    type.c
 )
 
 # 编译参数
