@@ -323,6 +323,26 @@ static Token* tokenize(char* p) {
       p++;
       continue;
     }
+
+    // 跳过行注释
+    if (startsWith(p, "//")) {
+      p += 2;
+      while (!(startsWith(p, "\n"))) {
+        p ++;
+      }
+      continue;
+    }
+
+    // 跳过块注释
+    if (startsWith(p, "/*")) {
+      p += 2;
+      while (!(startsWith(p, "*/"))) {
+        p ++;
+      }
+      p += 2;
+      continue;
+    } 
+
     if (isdigit(*p)) {
       char* startloc = p;
       // 获得数值的大小 (absulute)

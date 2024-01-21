@@ -208,7 +208,7 @@ Type* arrayOf(Type* ty, int cnt);
 void stmtExType(Node* node);
 
 // 汇编代码生成入口
-void genCode(Program* root);
+void genCode(Program* root, FILE* out);
 
 // 字符串处理
 char* format(char* Fmt, ...);
