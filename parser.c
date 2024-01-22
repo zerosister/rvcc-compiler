@@ -1,10 +1,36 @@
 #include "rvcc.h"
 
-// 符号表，hash_Table 实现形式
-HashTable* hashTable = NULL;
 // 全局变量 与 函数名
 HashTable* globals = NULL;
 
+// 局部变量与形参
+HashTable* locals = NULL;
+
+// 全局作用域链表
+Scope* scopeList;
+
+// 所有符号表链表
+HashTable* hashHead;
+
+// 新建一个作用域
+static void enterScope() {
+  HashTable* locals = calloc(1, sizeof(HashTable));
+  Scope* scope = calloc(1, sizeof(Scope));
+  // 进栈
+  scope->next = scopeList->next;
+  scope->hashTable = locals;
+  // 插入符号表链表
+  locals->next = hashHead->next;
+  hashHead->next = locals;
+  scopeList->next = scope;
+}
+
+// 退出作用域
+static void exitScope() {
+  if (!(scopeList->next)) 
+    error("Jackson~,T.T 缺少作用域");
+  scopeList->next = scopeList->next->next;
+}
 
 // 自行构建 token 变量
 static Token multiplyToken = {TK_MUL};
@@ -78,12 +104,6 @@ static Status* unary(Token** rest, Token* token);
 static Node* primary(Token** rest, Token* token);
 static Node* funcArgu(Token** rest, Token* token);
 
-// 得到局部变量
-static HashTable* getHashTable() {
-  if (hashTable == NULL) hashTable = calloc(1, sizeof(HashTable));
-  return hashTable;
-}
-
 // 得到全局变量
 static HashTable* getGlobals(void) {
   if (globals == NULL) globals = calloc(1, sizeof(HashTable));
@@ -106,24 +126,33 @@ static Node *newStrLiteral(Token* token) {
   Node* node = calloc(1, sizeof(Node));
   node->token = &varToken;
   node->Var = var;
+  node->ty = ty;
   return node;
 }
 
 // hash 方法查找本地变量（符号）
 static Obj* findLocalVar(Token* token) {
-  hashTable = getHashTable();
-  return search(hashTable, token->loc, token->len);
+  Scope* sc = scopeList->next;
+  for ( ; sc; sc = sc->next ) {
+    HashTable* hashTable = sc->hashTable;
+    Obj* obj = search(hashTable, token->loc, token->len);
+    if (obj) 
+      return obj;
+  }
+  return NULL; 
 }
 
 // hash 方法新增变量至符号表，而变量只会从 token 中产生
 static Obj* newLocalVar(Token* token) {
-  Obj* var = findLocalVar(token);
+  // 只在当前域中寻找是否已经定义过
+  Obj* var = search(scopeList->next->hashTable, token->loc, token->len);
   if (var == NULL) {
     // 未找到，新建 Obj
-    var = insert(getHashTable(), token->loc, token->len);
+    var = insert(scopeList->next->hashTable, token->loc, token->len);
     var->isLocal = true;
+    return var;
   }
-  return var;
+  errorTok(token, "Cafe~, duplicated definition");
 }
 
 static Obj* findGlobalVar(Token* token) {
@@ -262,6 +291,7 @@ static Status* newStatus(StatusKind kind) {
 // Compound = { (Decla | Stmt)* }
 static Node* compound(Token** rest, Token* token) {
   *rest = skip(token, "{");
+  enterScope();
   Node head = {};
   Node *cur = &head;
   // 当 token 为 "}" 时停下
@@ -290,7 +320,9 @@ static Node* compound(Token** rest, Token* token) {
   }
   *rest = skip(*rest, "}");
   // 返回构建的 compound 结点
-  return mkBlockNode(token, head.next);
+  Node* node = mkBlockNode(token, head.next);
+  exitScope();
+  return node;
 }
 
 // Declspec: 数据类型
@@ -944,11 +976,13 @@ static Node* funcArgu(Token** rest, Token* token) {
   // 吸收第一个参数
   cur->next = assign(rest, *rest)->ptr;
   cur = cur->next;
+  addType(cur);
   while ((*rest)->kind == TK_COM) {
     // 吸收 ','
     *rest = (*rest)->next;
     cur->next = assign(rest, *rest)->ptr;
     cur = cur->next;
+    addType(cur);
   }
   // 吸收 ')'
   *rest = skip(*rest, ")");
@@ -985,18 +1019,23 @@ static Function* function(Token** rest, Token* token, Type* baseType) {
   // 记录下变量或方程结点
   Node* tmp = declarator(rest, token, baseType, false);
   if ((*rest)->kind == TK_LBR) {
+    // 因为可能有形参，故需要再进入一个域
+    scopeList = calloc(1, sizeof(scopeList));
+    hashHead = calloc(1, sizeof(HashTable)); 
+    enterScope();
     // 表示为函数
     tmp->Var->isFuncName = true;
-    Type* params = typeSuffix(rest, *rest);  
+    Type* params = typeSuffix(rest, *rest); 
     Node* body = compound(rest, *rest);
     // 生成当前 Function 结点
     Function* func = calloc(1, sizeof(Function));
-    func->Locals = getHashTable();
     func->FType = funcType(tmp->Var->ty);
+    func->locals = hashHead->next;
     func->funcName = strndup(tmp->Var->Name, strlen(tmp->Var->Name));
     func->params = params;
     func->Body = body;
     func->isFunction = true;
+    exitScope();
     return func;
   }
   // 将全局变量的初始化作为一个 Function 处理

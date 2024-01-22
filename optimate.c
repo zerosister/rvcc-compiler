@@ -1,5 +1,4 @@
 #include "rvcc.h"
-#if USE_HASH
 unsigned int hash(char *Name, int size, int len) {
   unsigned int hashValue = 0;
   for (int i = 0; i < len; i++) {
@@ -53,4 +52,3 @@ void remove_hash(HashTable *hashTable, char *Name) {
     current = current->next;
   }
 }
-#endif

@@ -348,16 +348,21 @@ static void genStmt(Node* root) {
 // 根据变量链表计算出偏移量
 static void assignVarOffsets(Function *func) {
   int offset = 0;
+  HashTable* locals = func->locals;
   // 读取所有变量
-  for (int i = 0; i < HASH_SIZE; i++) {
-    Obj *var = func->Locals->objs[i];
-    while (var) {
-      // 偏移量置为类型偏移量
-      offset += var->ty->size;
-      var->Offset = -offset;
-      var = var->next;
+  while (locals) {
+    for (int i = 0; i < HASH_SIZE; i++) {
+      Obj *var = locals->objs[i];
+      while (var) {
+        // 偏移量置为类型偏移量
+        offset += var->ty->size;
+        var->Offset = -offset;
+        var = var->next;
+      }
     }
+    locals = locals->next;
   }
+  
   // 将栈对齐到 16 字节
   func->StackSize = alignTo(offset, 16);
 }

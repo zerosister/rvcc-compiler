@@ -167,11 +167,11 @@ static char* strLiteralEnd(char* p) {
     if (*p == '\n' || *p == '\0') {
       errorAt(p, "Szro~,不正确的字符串字面量 <-_->\n");
     }
-    p += 1;
     if (*p == '\\') {
       // 若为转义符则跳过下一个字符
       p += 1;
     }
+    p += 1;
   }
   return p;
 }

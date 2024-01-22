@@ -69,6 +69,7 @@ void addType(Node *node) {
   addType(node->RNode);
   addType(node->init);
   addType(node->body);
+  addType(node->argus);
 
   switch (node->token->kind) {
     case TK_LBB:

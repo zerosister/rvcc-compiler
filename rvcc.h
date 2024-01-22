@@ -113,12 +113,20 @@ typedef struct HashTable HashTable;
 struct HashTable {
   Obj* objs[HASH_SIZE];   // hash_size 个 Obj 指针数组
   int size;               // 变量的总个数
+  HashTable* next;
 };
 
 unsigned int hash(char* Name, int size, int len);
 Obj* insert(HashTable* hashTable, char* Name, int len);
 Obj* search(HashTable* hashTable, char* Name, int len);
 void remove_hash(HashTable* hashTable, char* Name);
+
+// 块作用域
+typedef struct Scope Scope;
+struct Scope {
+  HashTable* hashTable;
+  Scope* next;
+};
 
 // AST(抽象语法树) 节点
 typedef struct Node Node;
@@ -164,8 +172,8 @@ struct Status {
 typedef struct Function Function;
 struct Function {
   Node* Body;         //函数体
-  HashTable* Locals;  //本地变量
   Type* params;       //形参
+  HashTable* locals;     //局部变量
   int StackSize;      //栈大小
   Type* FType;        //函数类型
   char* funcName;     //函数名
