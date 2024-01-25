@@ -17,27 +17,19 @@ void error(char* Fmt, ...) {
 }
 
 // 输出错误出现位置，并退出
-void verrorAt(char* loc, char* Fmt, va_list VA) {
+void verrorAt(int lineNum, char* loc, char* Fmt, va_list VA) {
   // 获取某行第一个字符
-  char* first = currentInput;
-  int lineNum = 1;
-  char* cur = first;
-  while (cur < loc) {
-    if (*cur == '\n' && cur != loc) {
-      lineNum ++;
-      first = cur + 1;
-    }
-    cur ++;
-  }
+  char* first = loc;
+  // first 递减到当前行最开始位置
+  while (currentInput < first && first[-1] != '\n') 
+    first --;
   // 该行的末尾
-  char* end = first;
-  while (*end != '\n') {
+  char* end = loc;
+  while (*end != '\n') 
     end ++;
-  }
-  
   // 输出源信息
   fprintf(stderr, "%s Line %d:", currentFile, lineNum);
-  for (cur = first; cur < end; cur++) {
+  for (char* cur = first; cur < end; cur++) {
     fprintf(stderr, "%c", *cur);
   }
   // 输出出错信息
@@ -64,14 +56,21 @@ void verrorAt(char* loc, char* Fmt, va_list VA) {
 void errorAt(char* loc, char* Fmt, ...) {
   va_list VA;
   va_start(VA, Fmt);
-  verrorAt(loc, Fmt, VA);
+  char* p = currentInput;
+  int lineNum = 1;
+  while (p < loc) {
+    if (*p == '\n') {
+      lineNum ++;
+    }
+  }
+  verrorAt(lineNum, loc, Fmt, VA);
 }
 
 // 语法分析出错
 void errorTok(Token* token, char* Fmt, ...) {
   va_list VA;
   va_start(VA, Fmt);
-  verrorAt(token->loc, Fmt, VA);
+  verrorAt(token->lineNum, token->loc, Fmt, VA);
 }
 
 /********************* 分词 ***********************/
@@ -309,6 +308,20 @@ static int specify_keyWord(Token* token) {
   return -1;
 }
 
+// 添加行号
+static void addLineNum(Token* token) {
+  char* p = currentInput;
+  int n = 1;
+  do {
+    if (p == token->loc) {
+      token->lineNum = n;
+      token = token->next;
+    }
+    if (*p == '\n') 
+      n ++;
+  } while (*p++);
+}
+
 // 终结符解析
 static Token* tokenize(char* p) {
   // 使用一个链表进行存储各个 Token
@@ -399,6 +412,8 @@ static Token* tokenize(char* p) {
   }
   cur->next = newToken(TK_EOF, 0, p, 0);
 
+  // 为 token 添加行号
+  addLineNum(head.next);
   // 因为头节点不存储信息故返回 head->next
   return head.next;
 }

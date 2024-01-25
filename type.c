@@ -91,6 +91,10 @@ void addType(Node *node) {
     case TK_DIV:
       node->ty = node->LNode->ty;
       return;
+    // 结点类型设为右左子结点类型
+    case TK_COM:
+      node->ty = node->RNode->ty;
+      return;
     // 结点类型设为 int
     case TK_DEQ:
     case TK_NEQ:

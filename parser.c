@@ -49,7 +49,7 @@ static Token varToken = {TK_VAR};
 // Typesuffix = '(' (Declspec Declarator (, Declspec Declarator)*)? ')'
 // Compound = { (Decla | Stmt)* }
 // Decla = Declspec (Declarator Decla_Prim)? ';'
-// Decla_Prim =  (('=' expr)+(',' Declarator ('=' expr)?)*))?
+// Decla_Prim =  (('=' Assign)+(',' Declarator ('=' Assign)?)*))?
 // Declspec: 数据类型
 // Declarator: '*'* Var ArrarySuffix 可以为多重指针
 // ArrarySuffix = ('['num']')*
@@ -60,7 +60,7 @@ static Token varToken = {TK_VAR};
 //        | "while" "(" expr ")" stmt
 //        | Compound
 // ExprStmt = Expr? ;
-// 暂时 Expr = assign
+// 暂时 Expr = Assign ("," Expr)?
 // Assign -> Equa Assign'
 // Assign' -> = Equa Assign | null
 // Equa -> ! Equa | Rela Equa'
@@ -386,7 +386,7 @@ static Node* declarator(Token** rest, Token* token, Type* ty, bool isLocal) {
   return node;  
 }
 
-// Decla_Prim =  (('=' expr)+(',' Declarator ('=' expr)?)*))?
+// Decla_Prim =  (('=' Assign)+(',' Declarator ('=' Assign)?)*))?
 // 若为空语句，或者仅仅声明了变量，没有语句进行赋初值，则返回 NULL
 static void decla_Prim(Token** rest, Token* token, Type* ty, Node* declaration, Node* head, bool isLocal) {
   // cur 用于表示当前 变量声明链表 中最后一个
@@ -397,7 +397,7 @@ static void decla_Prim(Token** rest, Token* token, Type* ty, Node* declaration, 
       token = *rest;
       // 吸收 =
       *rest = (*rest)->next;
-      declaration = mkNode(token, declaration, expr(rest, *rest)->ptr);
+      declaration = mkNode(token, declaration, assign(rest, *rest)->ptr);
       // 加入赋初值语句链表中
       cur->next = declaration;
       cur = cur->next;
@@ -413,7 +413,7 @@ static void decla_Prim(Token** rest, Token* token, Type* ty, Node* declaration, 
           token = *rest;
           // 吸收 =
           *rest = (*rest)->next;
-          declaration = mkNode(token, declaration, expr(rest, *rest)->ptr);
+          declaration = mkNode(token, declaration, assign(rest, *rest)->ptr);
           // 加入赋初值语句链表中
           cur->next = declaration;
           cur = cur->next;
@@ -530,13 +530,23 @@ static Node* exprStmt(Token** rest, Token* token) {
     // 在 parser 中处理空语句，避免建立过多结点
     return NULL;
   }
-  Node* root = assign(rest, token)->ptr;
+  Node* root = expr(rest, token)->ptr;
   *rest = skip(*rest, ";");
   return root;
 }
 
-// 暂时 Expr = assign
-static Status* expr(Token** rest, Token* token) { return assign(rest, token); }
+// 暂时 Expr = Assign ("," Expr)?
+static Status* expr(Token** rest, Token* token) { 
+  Status* stat = assign(rest, token);
+  if ((*rest)->kind == TK_COM) {
+    token = *rest;
+    *rest = (*rest)->next;
+    Node* right = expr(rest, *rest)->ptr;
+    stat->ptr = mkNode(token, stat->ptr, right);
+    addType(stat->ptr);
+  } 
+  return stat;
+}
 
 // Assign -> Equa Assign'
 static Status* assign(Token** rest, Token* token) {

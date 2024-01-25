@@ -77,6 +77,8 @@ int main(int argc, char** argv) {
 
   // 代码生成
   FILE* out = openFile(optO);
+  // .file 文件编号 文件名
+  fprintf(out, ".file 1\"%s\"\n", inputPath);
   genCode(root, out);
   return 0;
 }

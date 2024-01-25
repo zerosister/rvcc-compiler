@@ -40,7 +40,7 @@ test: $(TESTS)
 
 # 清理标签，清除所有非源代码文件
 clean:
-	rm -rf rvcc tmp* $(TESTS) test/*.s test/*.exe *.o
+	rm -rf rvcc tmp* $(TESTS) test/*.s test/*.exe *.o test/tmp*
 
 # 伪目标，没有实际的产出文件（rvcc标签产生了main.o）
 .PHONY: test clean

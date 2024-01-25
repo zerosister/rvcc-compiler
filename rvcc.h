@@ -66,6 +66,7 @@ struct Token {
   char* loc;       //字符串中位置
   int len;         //长度
   char* str;       //字符串字面量值
+  int lineNum;     //行号
 };
 
 // 类型种类
@@ -190,7 +191,7 @@ struct Program {
 
 /************************ 函数声明 *************************/
 // 报错信息
-void verrorAt(char* loc, char* Fmt, va_list VA);
+void verrorAt(int lineNum, char* loc, char* Fmt, va_list VA);
 void errorAt(char* loc, char* Fmt, ...);
 void errorTok(Token* token, char* Fmt, ...);
 void error(char* Fmt, ...);

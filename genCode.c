@@ -63,6 +63,13 @@ static void genAddr(Node *node) {
     // 正常遇到变量便会解引用
     return;
   }
+  if (node->token->kind == TK_COM) {
+    // 首先执行左结点
+    genExpr(node->LNode);
+    // 对应于右结点
+    genAddr(node->RNode);
+    return;
+  }
   errorTok(node->token, "Da Zhang Wei says: not an lvalue");
 }
 
@@ -120,11 +127,15 @@ static void genFuncall(Node* argus) {
   }
 }
 
-static void genExpr(Node* root) {
-  // 深度优先遍历 DFS left -> right -> root
-
+static void genExpr(Node* root) {  
   // 如果为 NULL 则不生成任何代码
   if (!root) return;
+  // .loc 文件编号 行号
+  if (root->token->lineNum != 0) {
+    // 因为此前有生成占位 token 所以当 lineNum 非零才打印
+    printLn("\t.loc 1 %d", root->token->lineNum);
+  }
+  // 深度优先遍历 DFS left -> right -> root
 
   Token* token_root = root->token;
   switch (token_root->kind) {
@@ -251,6 +262,9 @@ static void genExpr(Node* root) {
       // not equal zero? sltu a0,x0,a0
       printLn("\tsnez a0,a0");
       return;
+    case TK_COM:
+    // 不用做因为先递归左结点后递归右结点
+      return;
     default:
       break;
   }
@@ -262,6 +276,11 @@ static void genStmt(Node* root) {
 
   // 如果为 NULL 则不生成任何代码
   if (!root) return;
+  // .loc 文件编号 行号
+  if (!root->token->lineNum) {
+    // 因为此前有生成占位 token 所以当 lineNum 非零才打印
+    printLn("\t.loc 1 %d", root->token->lineNum);
+  }
 
   Token *token_root = root->token;
 

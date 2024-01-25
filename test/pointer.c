@@ -2,7 +2,7 @@
 
 int main() {
   // [20] 支持一元& *运算符
-  ASSERT(3, ({ int x=3; *&x; }));
+  ASSERT(3, ({ int x=3; *&x;}));
   ASSERT(3, ({ int x=3; int *y=&x; int **z=&y; **z; }));
   ASSERT(5, ({ int x=3; int y=5; *(&x-1); }));
   ASSERT(3, ({ int x=3; int y=5; *(&y+1); }));
