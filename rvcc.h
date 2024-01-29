@@ -54,6 +54,8 @@ typedef enum {
   TK_DQU,    // "
   TK_CHL,    // 字符型字面量
   TK_StmtEx,  // GNU 支持的语句表达式 ({})
+  TK_STRUCT,  // struct
+  TK_POI,     // .
   TK_EOF     //终结符
 } TokenKind;
 
@@ -75,11 +77,15 @@ typedef enum {
   TY_CHAR,  // char
   TY_PTR, // 指针
   TY_ARRAY, //数组
+  TY_STRUCT,  // 结构体
   TY_FUNC // 函数
 } TypeKind;
 
 // 符号表中变量
 typedef struct Obj Obj;
+
+// 结构体成员
+typedef struct Member Member;
 
 // 结点或变量类型
 typedef struct Type Type;
@@ -91,11 +97,21 @@ struct Type {
   Obj* var;           // 记录下函数形参信息
   Type* retType;      // 函数返回类型
   int size;           // 类型所占空间，若为数组则为整个数组所占空间
+  Member* members;    // 结构体成员
 };
 
 // 声明全局变量，在 type.c 中定义
 extern Type *TypeInt;
 extern Type *TypeChar;
+
+// 结构体成员
+struct Member {
+  Member* next;       // 下一个成员
+  char* name;         // 成员名
+  int offset;         // 该成员在结构体中的相对地址
+  Type* ty;           // 成员类型
+  int align;          // 记录对齐的大小
+};
 
 // hash_size 即为 hash 桶的个数
 #define HASH_SIZE 13
@@ -143,6 +159,7 @@ struct Node {
   Type* ty;     // 数据类型
   Node* argus;  // 函数参数
   char* funcName;   // 对于函数调用，需要存储函数名
+  Member* member; // 指定访问的成员变量
 };
 
 // 表示状态的种类
@@ -218,6 +235,7 @@ void stmtExType(Node* node);
 
 // 汇编代码生成入口
 void genCode(Program* root, FILE* out);
+int alignTo(int n, int align);
 
 // 字符串处理
 char* format(char* Fmt, ...);

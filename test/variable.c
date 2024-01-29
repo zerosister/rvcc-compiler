@@ -39,7 +39,7 @@ int main() {
   ASSERT(8, sizeof(g1));
   ASSERT(32, sizeof(g2));
 
-  // [33] 支持char类型
+  // [33] 支持 char 类型
   ASSERT(1, ({ char x=1; x; }));
   ASSERT(1, ({ char x=1; char y=2; x; }));
   ASSERT(2, ({ char x=1; char y=2; y; }));

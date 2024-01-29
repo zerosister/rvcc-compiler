@@ -136,6 +136,8 @@ static int specify_puntc(char* p) {
       return TK_RMB;
     case '"':
       return TK_DQU;
+    case '.':
+      return TK_POI;
     default:
       errorAt(p, "Darling T.T ~~ I can't deal with this punctuation");
   }
@@ -258,7 +260,8 @@ static Token* strLiteral(char* p) {
 
 // skip 期待得到指定符号
 Token* skip(Token* token, char* str) {
-  if (!equal(token, str)) errorTok(token, "Sweety~,expected %s", str);
+  if (!equal(token, str)) 
+    errorTok(token, "Sweety~,expected %s", str);
   return token->next;
 }
 
@@ -279,7 +282,7 @@ static bool isIdent2(char c) { return isIdent1(c) || ('0' <= c && c <= '9'); }
 
 // 判断是否为关键字
 static int specify_keyWord(Token* token) {
-  static char* keyWords[] = {"return", "if", "else", "for", "while", "int", "sizeof", "char"};
+  static char* keyWords[] = {"return", "if", "else", "for", "while", "int", "sizeof", "char", "struct"};
   // 指针数组大小 / 指针大小 = 指针个数
   for (int i = 0; i < sizeof(keyWords) / sizeof(*keyWords); i++) {
     if (equal(token, keyWords[i])) {
@@ -300,6 +303,8 @@ static int specify_keyWord(Token* token) {
           return TK_SIZEOF;
         case 7:
           return TK_CHAR;
+        case 8:
+          return TK_STRUCT;
         default:
           break;
       }

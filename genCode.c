@@ -37,7 +37,7 @@ static void Pop(char *reg) {
 }
 
 // 对齐到 align 的整数倍
-static int alignTo(int n, int align) {
+int alignTo(int n, int align) {
   // (0,align] 返回 align
   return (n + align - 1) / align * align;
 }
@@ -68,6 +68,14 @@ static void genAddr(Node *node) {
     genExpr(node->LNode);
     // 对应于右结点
     genAddr(node->RNode);
+    return;
+  }
+  if (node->token->kind == TK_POI) {
+    // 首先产生左结点即结构体变量地址
+    genAddr(node->LNode);
+    // 为成员生成变量偏移量
+    printLn("# 结构体变量 %s 偏移 %d", node->LNode->member->name, node->LNode->member->offset);
+    printLn("\taddi a0,a0,%d ", node->LNode->member->offset);
     return;
   }
   errorTok(node->token, "Da Zhang Wei says: not an lvalue");
@@ -173,6 +181,12 @@ static void genExpr(Node* root) {
       // 将 token kind 改回 TK_LBB, 进行 块语句生成
       token_root->kind = TK_LBB;
       genStmt(root);
+      return;
+    case TK_POI:
+      // 结构体先产生左结点地址，再加载偏移结构体变量成员后的 offset
+      genAddr(root->LNode);
+      printLn("\taddi a0,a0,%d", root->LNode->member->offset);
+      load(root->ty);
       return;
     default:
       break;

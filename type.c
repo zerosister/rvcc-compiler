@@ -95,6 +95,10 @@ void addType(Node *node) {
     case TK_COM:
       node->ty = node->RNode->ty;
       return;
+    // 结点类型设为结构体变量类型
+    case TK_POI:
+      node->ty = node->LNode->member->ty;
+      return;
     // 结点类型设为 int
     case TK_DEQ:
     case TK_NEQ:

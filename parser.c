@@ -75,7 +75,7 @@ static Token varToken = {TK_VAR};
 //          | - Unary 
 //          | * Unary 
 //          | & Unary 
-//          | Primary ('[' Expr ']')*
+//          | Primary ('[' Expr ']' | '.' Var )*
 // Primary -> num 
 //            | Var 
 //            | Var FuncArgu 
@@ -103,6 +103,8 @@ static Status* mul_Prime(Token** rest, Token* token, Node* inherit);
 static Status* unary(Token** rest, Token* token);
 static Node* primary(Token** rest, Token* token);
 static Node* funcArgu(Token** rest, Token* token);
+
+static Type* arraySuffix(Token** rest, Token* token, Type* ty);
 
 // 得到全局变量
 static HashTable* getGlobals(void) {
@@ -300,6 +302,7 @@ static Node* compound(Token** rest, Token* token) {
       // 当为关键字时， => Decla
       case TK_INT:
       case TK_CHAR:
+      case TK_STRUCT:
         cur->next = decla(rest, *rest);
         // 此处可能不止一个语句
         while (cur->next) {
@@ -325,6 +328,32 @@ static Node* compound(Token** rest, Token* token) {
   return node;
 }
 
+// addMembers 为结构体添加成员
+static void addMembers(Member* head, Member* cur, Type* ty, Token** rest, int* offset) {
+  while ((*rest)->kind == TK_MUL) {
+    // Delcaration 中即使修改 * TK_MUL -> TK_DEREF 也无意义，因为该 token 此后不用
+    ty = pointerTo(ty);
+    *rest = (*rest)->next;
+  }
+  if ((*rest)->kind != TK_VAR) 
+    errorTok(*rest, "Cinderella~, We need a variable name here~");
+  // 遍历结构体中已有变量避免重名
+  for (head = head->next; head; head = head->next) {
+    if (!strncmp(head->name, (*rest)->loc, (*rest)->len)) {
+      errorTok(*rest, "Aurora~, duplicated definition~");
+    }
+  }
+  Member* member = calloc(1, sizeof(Member));
+  member->name = strndup((*rest)->loc, (*rest)->len);
+  // 将变量 token 消耗
+  *rest = (*rest)->next;
+  ty = arraySuffix(rest, *rest, ty);
+  member->ty = ty;
+  member->offset = *offset;
+  *offset += ty->size;
+  cur->next = member;
+}
+
 // Declspec: 数据类型
 static Type* declspec(Token** rest, Token* token) {
   // 消耗掉特定关键字
@@ -336,6 +365,85 @@ static Type* declspec(Token** rest, Token* token) {
     case TK_CHAR:
       *rest = (*rest)->next;
       return TypeChar;
+    case TK_STRUCT: {
+      int offset = 0;
+      Member memsHead = {};
+      Member* cur = &memsHead;
+      *rest = (*rest)->next;
+      *rest = skip(*rest, "{");
+      while ((*rest)->kind != TK_RBB) {
+        // 未遇到右大括号继续循环
+        Type* base = declspec(rest, *rest);
+        switch ((*rest)->kind) {
+          case TK_SEM:
+            // 空语句 吸收
+            *rest = (*rest)->next;
+            break;
+          case TK_VAR:
+          case TK_MUL: {
+            // 将此前的数据类型传入
+            Type* ty = base; 
+            addMembers(&memsHead, cur, ty, rest, &offset);
+            if (cur->next) {
+              cur = cur->next;
+            }
+            while ((*rest)->kind == TK_COM) {
+              *rest = (*rest)->next;
+              addMembers(&memsHead, cur, ty, rest, &offset);
+              if (cur->next) {
+                cur = cur->next;
+              }
+            }
+            *rest = skip(*rest, ";");
+            break;
+          }
+          default:
+            errorTok(*rest, "Eva~,Not a variable Name~");
+          }
+      }
+      *rest = skip(*rest, "}");
+      Type* type = calloc(1, sizeof(Type));
+      type->members = memsHead.next;
+      Member* ms = type->members;
+      int alignNum = 1;
+      int rest, memOffset = 0;
+      // 确定对齐大小
+      while (ms) {
+        if (ms->ty->size > alignNum) {
+          alignNum = ms->ty->size;
+        }
+        ms = ms->next;
+      }
+      ms = type->members;
+      if (ms) {
+        // rest 用于表示对齐字节所剩余字节数
+        // align 表示下一个结构体成员可能开始的相对字节数（相对于对齐大小）
+        ms->align = ms->ty->size;
+        rest = alignNum - ms->align;
+        memOffset = ms->ty->size;
+        ms = ms->next;
+      }
+      while (ms) {
+        if (rest >= ms->ty->size) {
+          // 表示对齐大小还可以放下另一个成员
+          ms->offset = memOffset;
+          ms->align = alignNum - rest + ms->ty->size;
+          rest = rest - ms->ty->size;
+        }
+        else {
+          rest = alignNum - ms->ty->size;
+          memOffset = alignTo(memOffset, alignNum);
+          ms->offset = memOffset;
+          // 更新下一个变量的起始位置
+          memOffset = memOffset + ms->ty->size;
+          ms->align = ms->ty->size;
+        }
+        ms = ms->next;
+      }
+      type->size = alignTo(memOffset, alignNum);
+      type->tyKind = TY_STRUCT;
+      return type;
+    }
     case TK_EOF:
       return NULL;  
     default:
@@ -343,7 +451,7 @@ static Type* declspec(Token** rest, Token* token) {
   }  
 }
 
-// ([num])* 递归解析数组
+// ([num])*
 static Type* arraySuffix(Token** rest, Token* token, Type* ty) {
   if (token->kind == TK_LMB) {
     // 检测到为数组，吸收 [
@@ -352,10 +460,8 @@ static Type* arraySuffix(Token** rest, Token* token, Type* ty) {
     int cnt = (*rest)->val;
     *rest = (*rest)->next;
     *rest = skip(*rest, "]");
-    if ((*rest)->kind ==  TK_LMB) {
-      // 多维数组
-      ty = arraySuffix(rest, *rest, ty);
-    }
+    // 考虑为多维数组或结构体成员
+    ty = arraySuffix(rest, *rest, ty);
     ty = arrayOf(ty, cnt);
   }
   return ty;
@@ -848,6 +954,53 @@ static Status* mul_Prime(Token** rest, Token* token, Node* inherit) {
   return NULL;
 }
 
+// 返回对应结构体的成员
+static Member* checkMember(Type* ty, Token* token) {
+  for (Member* m = ty->members; m; m = m->next) {
+    if (!strncmp(m->name, token->loc, token->len)) {
+      // 找到成员
+      return m;
+    }
+  }
+  // 未找到返回 空
+  return NULL;
+}
+
+// 后处理
+static Node* postProcess(Token** rest, Node* node) {
+  switch ((*rest)->kind) {
+    case TK_LMB: {
+      // 吸收 [
+      *rest = (*rest)->next;
+      Node* add = expr(rest, *rest)->ptr;
+      // 吸收 ]
+      *rest = skip(*rest, "]");
+      // [] 中的 expr 加上 变量地址
+      node = mkAddNode(&addToken, node, add);
+      // 再进行解引用
+      node = mkNode(&dereferenceToken, node, NULL);
+      // 递归调用吸收后面 [expr]
+      node = postProcess(rest, node);
+      return node;
+    }
+    case TK_POI: {
+      Token* token = *rest;
+      // 吸收 '.'
+      *rest = (*rest)->next;
+      addType(node);
+      node->member = checkMember(node->ty, *rest);
+      // 吸收结构体变量 如 x.a, 吸收变量 a
+      *rest = (*rest)->next;
+      // 新建 · 单叉树
+      node = mkNode(token, node, NULL);
+      node = postProcess(rest, node);
+      return node;
+    }
+    default:
+      return node;
+  }
+}
+
 // Unary ->   + Unary 
 //          | - Unary 
 //          | * Unary 
@@ -885,23 +1038,9 @@ static Status* unary(Token** rest, Token* token) {
     default:
       // 进入 Primary
       prim->ptr = primary(rest, token);
-      while ((*rest)->kind == TK_LMB) {
-        // 注意二维数组如 x[1][2] = *(*(x+1)+2)
-        // 吸收 [
-        *rest = (*rest)->next;
-        Node* add = expr(rest, *rest)->ptr;
-        // 吸收 ]
-        *rest = skip(*rest, "]");
-        prim->ptr = mkAddNode(&addToken, prim->ptr, add);
-        prim->ptr = mkNode(&dereferenceToken, prim->ptr, NULL);
-      }
+      prim->ptr = postProcess(rest, prim->ptr);
       return prim;
   }
-}
-
-// StmtEx -> Compound 
-static Node* stmtEx(Token** rest, Token* token) {
-
 }
 
 // Primary -> num 
