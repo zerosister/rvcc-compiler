@@ -75,7 +75,9 @@ void addType(Node *node) {
     case TK_LBB:
       // 需要遍历 body 的 Compound 结点，因为 body 上方已经访问
       // 直接访问 body -> next
-      Node* body = node->body->next;
+      Node* body = node->body;
+      if (body) 
+        body = node->body->next;      
       while (body) {
         addType(node->body); 
         body = body->next;

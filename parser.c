@@ -12,13 +12,19 @@ Scope* scopeList;
 // 所有符号表链表
 HashTable* hashHead;
 
+// 结构体类型链表
+Type* locTypes = NULL;
+
 // 新建一个作用域
 static void enterScope() {
   HashTable* locals = calloc(1, sizeof(HashTable));
+  locTypes = calloc(1, sizeof(Type));
   Scope* scope = calloc(1, sizeof(Scope));
   // 进栈
   scope->next = scopeList->next;
+
   scope->hashTable = locals;
+  scope->tyList = locTypes;
   // 插入符号表链表
   locals->next = hashHead->next;
   hashHead->next = locals;
@@ -354,6 +360,84 @@ static void addMembers(Member* head, Member* cur, Type* ty, Token** rest, int* o
   cur->next = member;
 }
 
+static Type* insertStruct(Token** rest, Token* token) {
+  Type* ty = locTypes->structNext;
+  while (ty) {
+    if (!strncmp(ty->structName, token->loc, token->len)) {
+      // 类型已经被定义
+      errorTok(token, "Oppa~, redefinition of struct");
+    }
+    ty = ty->structNext;
+  }
+  Type* new = calloc(1, sizeof(Type));
+  new->tyKind = TY_STRUCT;
+  new->structName = strndup(token->loc, token->len);
+  new->structNext = locTypes->structNext;
+  // 插入类型链表
+  locTypes->structNext = new;
+  // 吸收结构体标签
+  *rest = (*rest)->next;
+  return new;
+}
+
+// 从域中寻找结构体类型
+static Type* searchStruct(Token* token) {
+  Scope* sc = scopeList->next;
+  Type* ty = NULL;
+  while (sc) {
+    ty = sc->tyList->structNext;
+    while (ty) {
+      if (!(strncmp(ty->structName, token->loc, token->len))) {
+        return ty;    
+      }
+      ty = ty->structNext;
+    }
+    sc = sc->next;
+  }
+  errorTok(token, "First Lady~,No such struct");
+}
+
+// 进行结构体变量对齐
+static void alignMembers(Type* type) {
+  Member* ms = type->members;
+  int alignNum = 1;
+  int rest, memOffset = 0;
+  // 确定对齐大小
+  while (ms) {
+    if (ms->ty->size > alignNum) {
+      alignNum = ms->ty->size;
+    }
+    ms = ms->next;
+  }
+  ms = type->members;
+  if (ms) {
+    // rest 用于表示对齐字节所剩余字节数
+    // align 表示下一个结构体成员可能开始的相对字节数（相对于对齐大小）
+    ms->align = ms->ty->size;
+    rest = alignNum - ms->align;
+    memOffset = ms->ty->size;
+    ms = ms->next;
+  }
+  while (ms) {
+    if (rest >= ms->ty->size) {
+      // 表示对齐大小还可以放下另一个成员
+      ms->offset = memOffset;
+      ms->align = alignNum - rest + ms->ty->size;
+      rest = rest - ms->ty->size;
+    }
+    else {
+      rest = alignNum - ms->ty->size;
+      memOffset = alignTo(memOffset, alignNum);
+      ms->offset = memOffset;
+      // 更新下一个变量的起始位置
+      memOffset = memOffset + ms->ty->size;
+      ms->align = ms->ty->size;
+    }
+    ms = ms->next;
+  }
+  type->size = alignTo(memOffset, alignNum);
+}
+
 // Declspec: 数据类型
 static Type* declspec(Token** rest, Token* token) {
   // 消耗掉特定关键字
@@ -365,11 +449,26 @@ static Type* declspec(Token** rest, Token* token) {
     case TK_CHAR:
       *rest = (*rest)->next;
       return TypeChar;
+    // struct Tag? {...}
     case TK_STRUCT: {
       int offset = 0;
       Member memsHead = {};
       Member* cur = &memsHead;
+      // 吸收 struct 
       *rest = (*rest)->next;
+      Type* type = calloc(1, sizeof(Type));
+      if ((*rest)->kind == TK_VAR) {
+        if ((*rest)->next->kind == TK_LBB) {
+          // 结构体标签 且为定义结构体
+          type = insertStruct(rest, *rest);
+        }
+        else {
+          type = searchStruct(*rest);
+          // 吸收标签
+          *rest = (*rest)->next;
+          return type; 
+        }
+      }
       *rest = skip(*rest, "{");
       while ((*rest)->kind != TK_RBB) {
         // 未遇到右大括号继续循环
@@ -402,46 +501,8 @@ static Type* declspec(Token** rest, Token* token) {
           }
       }
       *rest = skip(*rest, "}");
-      Type* type = calloc(1, sizeof(Type));
       type->members = memsHead.next;
-      Member* ms = type->members;
-      int alignNum = 1;
-      int rest, memOffset = 0;
-      // 确定对齐大小
-      while (ms) {
-        if (ms->ty->size > alignNum) {
-          alignNum = ms->ty->size;
-        }
-        ms = ms->next;
-      }
-      ms = type->members;
-      if (ms) {
-        // rest 用于表示对齐字节所剩余字节数
-        // align 表示下一个结构体成员可能开始的相对字节数（相对于对齐大小）
-        ms->align = ms->ty->size;
-        rest = alignNum - ms->align;
-        memOffset = ms->ty->size;
-        ms = ms->next;
-      }
-      while (ms) {
-        if (rest >= ms->ty->size) {
-          // 表示对齐大小还可以放下另一个成员
-          ms->offset = memOffset;
-          ms->align = alignNum - rest + ms->ty->size;
-          rest = rest - ms->ty->size;
-        }
-        else {
-          rest = alignNum - ms->ty->size;
-          memOffset = alignTo(memOffset, alignNum);
-          ms->offset = memOffset;
-          // 更新下一个变量的起始位置
-          memOffset = memOffset + ms->ty->size;
-          ms->align = ms->ty->size;
-        }
-        ms = ms->next;
-      }
-      type->size = alignTo(memOffset, alignNum);
-      type->tyKind = TY_STRUCT;
+      alignMembers(type);
       return type;
     }
     case TK_EOF:
@@ -1138,7 +1199,7 @@ static Node* funcArgu(Token** rest, Token* token) {
   return head.next;
 }
 
-// 为函数识别局部变量
+// 为函数识别形参
 // Typesuffix = '(' (Declspec Declarator (, Declspec Declarator)*)? ')' 
 static Type* typeSuffix(Token** rest, Token* token) {
     // 吸收左括号
@@ -1169,7 +1230,6 @@ static Function* function(Token** rest, Token* token, Type* baseType) {
   Node* tmp = declarator(rest, token, baseType, false);
   if ((*rest)->kind == TK_LBR) {
     // 因为可能有形参，故需要再进入一个域
-    scopeList = calloc(1, sizeof(scopeList));
     hashHead = calloc(1, sizeof(HashTable)); 
     enterScope();
     // 表示为函数
@@ -1199,12 +1259,16 @@ static Function* function(Token** rest, Token* token, Type* baseType) {
 Program* parse(Token** rest, Token* token) {
   Function head = {};
   Function* cur = &head;
+  scopeList = calloc(1, sizeof(Scope));
+  hashHead = calloc(1, sizeof(HashTable)); 
+  enterScope();
   Type* baseType = declspec(rest, token);
   while (baseType != NULL) { 
     cur->next = function(rest, *rest, baseType);
     cur = cur->next;
     baseType = declspec(rest, *rest);
   }
+  exitScope();
   Program* prog = calloc(1, sizeof(Program));
   prog->funcs = head.next;
   prog->globals = getGlobals();

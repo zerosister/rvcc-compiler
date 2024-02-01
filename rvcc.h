@@ -94,6 +94,8 @@ struct Type {
   Type* base;         // 若类型为指针则表示指针指向的数据类型
   Type* params;       // 形参
   Type* next;         // 指示下一个形参
+  Type* structNext;   // 结构体类型列表的下一个
+  char* structName;    // 结构体名称
   Obj* var;           // 记录下函数形参信息
   Type* retType;      // 函数返回类型
   int size;           // 类型所占空间，若为数组则为整个数组所占空间
@@ -142,6 +144,7 @@ void remove_hash(HashTable* hashTable, char* Name);
 typedef struct Scope Scope;
 struct Scope {
   HashTable* hashTable;
+  Type* tyList;
   Scope* next;
 };
 
