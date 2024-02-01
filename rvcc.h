@@ -56,6 +56,7 @@ typedef enum {
   TK_StmtEx,  // GNU 支持的语句表达式 ({})
   TK_STRUCT,  // struct
   TK_POI,     // .
+  TK_ARROW,   // ->
   TK_EOF     //终结符
 } TokenKind;
 

@@ -91,6 +91,8 @@ static int specify_puntc(char* p) {
     case '+':
       return TK_ADD;
     case '-':
+      if (*(p + 1) == '>') 
+        return TK_ARROW;
       return TK_SUB;
     case '*':
       return TK_MUL;
@@ -380,6 +382,7 @@ static Token* tokenize(char* p) {
         case TK_NEQ:
         case TK_BGE:
         case TK_LSE:
+        case TK_ARROW:
           len = 2;
           break;
         case TK_DQU:

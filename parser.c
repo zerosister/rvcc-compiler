@@ -44,6 +44,7 @@ static Token divisionToken = {TK_DIV};
 static Token addToken = {TK_ADD};
 static Token dereferenceToken = {TK_DEREF};
 static Token varToken = {TK_VAR};
+static Token poiToken = {TK_POI};
 
 // 非递归的语法分析，发现 LL(1) 文法用栈其实无法解决本质问题
 // 因为仅仅为生成产生式时有用，附加语义动作则需要在 parse 中同时进行
@@ -81,7 +82,7 @@ static Token varToken = {TK_VAR};
 //          | - Unary 
 //          | * Unary 
 //          | & Unary 
-//          | Primary ('[' Expr ']' | '.' Var )*
+//          | Primary ('[' Expr ']' | '.' Var | '->' Var)*
 // Primary -> num 
 //            | Var 
 //            | Var FuncArgu 
@@ -1057,6 +1058,19 @@ static Node* postProcess(Token** rest, Node* node) {
       node = postProcess(rest, node);
       return node;
     }
+    case TK_ARROW: {
+      // 先解引用 x->a <=> (*x).a
+      node = mkNode(&dereferenceToken, node, NULL);
+      // 吸收 '->'
+      *rest = (*rest)->next;
+      addType(node);
+      node->member = checkMember(node->ty, *rest);
+      *rest = (*rest)->next;
+      // 新建 · 单叉树
+      node = mkNode(&poiToken, node, NULL);
+      node = postProcess(rest, node);
+      return node;
+    }
     default:
       return node;
   }
@@ -1066,7 +1080,7 @@ static Node* postProcess(Token** rest, Node* node) {
 //          | - Unary 
 //          | * Unary 
 //          | & Unary 
-//          | Primary ('[' Expr ']')*
+//          | Primary ('[' Expr ']' | '.' Var | '->' Var)*
 static Status* unary(Token** rest, Token* token) {
   Status* prim = newStatus(ST_Primary);
   switch (token->kind) {
