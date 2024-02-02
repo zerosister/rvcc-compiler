@@ -57,6 +57,7 @@ typedef enum {
   TK_STRUCT,  // struct
   TK_POI,     // .
   TK_ARROW,   // ->
+  TK_UNION,   // union
   TK_EOF     //终结符
 } TokenKind;
 
@@ -79,6 +80,7 @@ typedef enum {
   TY_PTR, // 指针
   TY_ARRAY, //数组
   TY_STRUCT,  // 结构体
+  TY_UNION,   // 共用体
   TY_FUNC // 函数
 } TypeKind;
 
@@ -145,7 +147,8 @@ void remove_hash(HashTable* hashTable, char* Name);
 typedef struct Scope Scope;
 struct Scope {
   HashTable* hashTable;
-  Type* tyList;
+  Type* structList;
+  Type* unionList;
   Scope* next;
 };
 
