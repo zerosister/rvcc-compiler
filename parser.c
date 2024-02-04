@@ -387,13 +387,11 @@ static Type* insertType(Token** rest, Token* token, bool isStruct) {
   Type* new = calloc(1, sizeof(Type));
   new->structName = strndup(token->loc, token->len);
   if (isStruct) {
-    new->tyKind = TY_STRUCT;
     new->structNext = locTypes->structNext;
     // 插入结构体类型链表
     locTypes->structNext = new;
   }
   else {
-    new->tyKind = TY_UNION;
     new->structNext = uniTypes->structNext;
     // 插入共用体类型链表
     uniTypes->structNext = new;
@@ -490,6 +488,10 @@ static Type* declspec(Token** rest, Token* token) {
       // 吸收 struct 
       *rest = (*rest)->next;
       Type* type = calloc(1, sizeof(Type));
+      if (token->kind == TK_STRUCT)
+        type->tyKind = TY_STRUCT;
+      else
+        type->tyKind = TY_UNION;
       if ((*rest)->kind == TK_VAR) {
         if ((*rest)->next->kind == TK_LBB) {
           // 结构体 or 共用体 标签 且为定义结构体 or 共用体

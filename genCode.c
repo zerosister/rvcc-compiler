@@ -83,8 +83,8 @@ static void genAddr(Node *node) {
 
 // 加载变量到 a0
 static void load(Type* ty) {
-  // 若为数组则变量作为地址用
-  if (ty->tyKind == TY_ARRAY) 
+  // 若为数组或结构体或共用体则变量作为地址用
+  if (ty->tyKind == TY_ARRAY || ty->tyKind == TY_UNION || ty->tyKind == TY_STRUCT) 
     return;
   // 将变量 load 至 a0
   printLn("# 读取 a0 中存放的地址，得到值存入 a0");
@@ -98,6 +98,19 @@ static void load(Type* ty) {
 static void store(Type* ty) {
   // 将左部地址存入 a1
   Pop("a1");
+  if (ty->tyKind == TY_STRUCT || ty->tyKind == TY_UNION) {
+    printLn("# 逐字节复制%s", ty->tyKind == TY_STRUCT ? "结构体" : "联合体");
+    for (int i = 0; i < ty->size; i++) {
+      printLn("\tli t0, %d", i);
+      printLn("\tadd t0,a0,t0");
+      printLn("\tlb t1, 0(t0)");
+
+      printLn("\tli t0, %d", i);
+      printLn("\tadd t0,a1,t0");
+      printLn("\tsb t1,0(t0)");
+    }
+    return;
+  }
   // 将右值放入左结点变量中
   printLn("# 将 a0 值，写入 a1 存放的地址中");
   if (ty->size == 1) 
