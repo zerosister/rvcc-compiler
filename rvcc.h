@@ -211,6 +211,7 @@ struct Function {
   char* funcName;     //函数名
   Function* next;     //下一个函数
   bool isFunction;    //是函数还是全局变量初始化    
+  bool isDefinition;  //是否为函数声明
 };
 
 // 程序

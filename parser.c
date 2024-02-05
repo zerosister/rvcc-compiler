@@ -1291,10 +1291,19 @@ static Function* function(Token** rest, Token* token, Type* baseType) {
     enterScope();
     // 表示为函数
     tmp->Var->isFuncName = true;
-    Type* params = typeSuffix(rest, *rest); 
-    Node* body = compound(rest, *rest);
+    Type* params = typeSuffix(rest, *rest);
+    // 若此时为 ; 则为函数声明
+    Node* body = NULL;
     // 生成当前 Function 结点
     Function* func = calloc(1, sizeof(Function));
+    if ((*rest)->kind == TK_SEM) {
+      *rest = (*rest)->next;
+      func->isDefinition = true;
+    }
+    else {
+      body = compound(rest, *rest);
+      func->isDefinition = false;
+    }
     func->FType = funcType(tmp->Var->ty);
     func->locals = hashHead->next;
     func->funcName = strndup(tmp->Var->Name, strlen(tmp->Var->Name));

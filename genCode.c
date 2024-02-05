@@ -448,7 +448,7 @@ static void codeGen(Function* func) {
   // 每条语句一个结点，需要遍历每条语句
   current_func = func;
   Node *body = func->Body;
-  if (func->isFunction) {
+  if (func->isFunction && func->isDefinition == false) {
     assignVarOffsets(func);
     printLn("\n# 定义全局 %s 段", func->funcName);
     printLn("\t.global %s", func->funcName);
