@@ -60,6 +60,7 @@ typedef enum {
   TK_ARROW,   // ->
   TK_UNION,   // union
   TK_LONG,    // long
+  TK_SHORT,   // short
   TK_EOF     //终结符
 } TokenKind;
 
@@ -84,6 +85,7 @@ typedef enum {
   TY_STRUCT,  // 结构体
   TY_UNION,   // 共用体
   TY_LONG,    // 长整型
+  TY_SHORT,   // 短整型
   TY_FUNC // 函数
 } TypeKind;
 
@@ -113,6 +115,7 @@ struct Type {
 extern Type *TypeInt;
 extern Type *TypeChar;
 extern Type *TypeLong;
+extern Type *TypeShort;
 
 // 结构体成员
 struct Member {

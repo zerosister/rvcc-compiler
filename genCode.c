@@ -90,6 +90,8 @@ static void load(Type* ty) {
   printLn("# 读取 a0 中存放的地址，得到值存入 a0");
   if (ty->size == 1) 
     printLn("\tlb a0,0(a0)"); 
+  else if (ty->size == 2)
+    printLn("\tlh a0,0(a0)");
   else if (ty->size == 4)
     printLn("\tlw a0,0(a0)");
   else
@@ -117,6 +119,8 @@ static void store(Type* ty) {
   printLn("# 将 a0 值，写入 a1 存放的地址中");
   if (ty->size == 1) 
     printLn("\tsb a0,0(a1)");
+  else if (ty->size == 2)
+    printLn("\tsh a0,0(a1)");
   else if (ty->size == 4)
     printLn("\tsw a0,0(a1)");
   else
@@ -426,6 +430,9 @@ static void storeGeneral(int paraCnt, Type* param) {
   switch (param->var->ty->size) {
     case 1:
       printLn("\tsb a%d,%d(fp)", paraCnt, param->var->Offset); 
+      return;
+    case 2:
+      printLn("\tsh a%d,%d(fp)", paraCnt, param->var->Offset); 
       return;
     case 4:
       printLn("\tsw a%d,%d(fp)", paraCnt, param->var->Offset); 

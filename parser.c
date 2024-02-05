@@ -315,6 +315,7 @@ static Node* compound(Token** rest, Token* token) {
       case TK_STRUCT:
       case TK_UNION:
       case TK_LONG:
+      case TK_SHORT:
         cur->next = decla(rest, *rest);
         // 此处可能不止一个语句
         while (cur->next) {
@@ -466,6 +467,9 @@ static Type* declspec(Token** rest, Token* token) {
     case TK_LONG:
       *rest = (*rest)->next;
       return TypeLong;
+    case TK_SHORT:
+      *rest = (*rest)->next;
+      return TypeShort;
     // struct Tag? {...}
     case TK_STRUCT:
     case TK_UNION: {
@@ -550,7 +554,7 @@ static Type* arraySuffix(Token** rest, Token* token, Type* ty) {
   return ty;
 }
 
-// Declarator: '*'* ArrarySuffix Var  变量可以为多重指针
+// Declarator: '*'* '('Declarator')'|Var ArrarySuffix 变量可以为多重指针
 static Node* declarator(Token** rest, Token* token, Type* ty, bool isLocal) {
   // 此时便加入符号表，此后的变量出现都只用在符号表中查找
   while ((*rest)->kind == TK_MUL) {
@@ -558,21 +562,38 @@ static Node* declarator(Token** rest, Token* token, Type* ty, bool isLocal) {
     ty = pointerTo(ty);
     *rest = (*rest)->next;
   }
-  if ((*rest)->kind != TK_VAR) 
-    errorTok(*rest, "Pineapple~, We need a variable here~");
+  Token* variable = *rest;
   Obj* obj = NULL;
-  // 处理局部变量 或 全局变量
-  if (isLocal) obj = newLocalVar(*rest);
-  else obj = newGlobalVar(*rest);
-  // 自动认为不是函数名，虽然 calloc 时就已经令为 false 了
-  obj->isFuncName = false;
-  Node* node = mkLeaf(*rest);
-  // 将变量 token 消耗
-  *rest = (*rest)->next;
+  Node* node = NULL;
+  if ((*rest)->kind == TK_LBR) {
+    // 吸收左括号
+    variable = variable->next;
+    // 嵌套类型声明
+    while ((*rest)->kind != TK_RBR) {
+      *rest = (*rest)->next;
+    }
+    // 将右括号 token 消耗
+    *rest = (*rest)->next;
+  }
+  else if ((*rest)->kind == TK_VAR) {
+    // 处理局部变量 或 全局变量
+    if (isLocal) obj = newLocalVar(*rest);
+    else obj = newGlobalVar(*rest);
+    // 自动认为不是函数名，虽然 calloc 时就已经令为 false 了
+    obj->isFuncName = false;
+    // 生成变量结点
+    node = mkLeaf(*rest);
+    // 吸收最内部的数组定义
+    *rest = (*rest)->next;
+    ty = arraySuffix(rest, *rest, ty);
+    obj->ty = ty;
+    node->Var = obj;
+    return node;
+  }
+  else
+    errorTok(*rest, "Pineapple~, We need a variable here~");
   ty = arraySuffix(rest, *rest, ty);
-  obj->ty = ty;
-  node->Var = obj;
-  return node;  
+  return declarator(&variable, variable, ty, isLocal);
 }
 
 // Decla_Prim =  (('=' Assign)+(',' Declarator ('=' Assign)?)*))?
@@ -630,6 +651,7 @@ static Node* decla(Token** rest, Token* token) {
       return NULL;
     case TK_VAR:
     case TK_MUL:
+    case TK_LBR:
       // 为变量，将此前的数据类型传入
       Node* declaration = declarator(rest, *rest, ty, true);
       decla_Prim(rest, *rest, ty, declaration, &head, true);

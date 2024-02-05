@@ -58,7 +58,10 @@ int main() {
 
   // [57] 支持 long 类型
   ASSERT(16, ({ struct {char a; long b;} x; sizeof(x); }));
-  
+
+  // [58] 支持 short 类型
+  ASSERT(4, ({ struct {char a; short b;} x; sizeof(x); }));
+
   printf("OK\n");
   return 0;
 }

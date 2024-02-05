@@ -4,9 +4,11 @@
 Type *TypeInt = &(Type){TY_INT, .size = 4, .align = 4};
 Type *TypeChar = &(Type){TY_CHAR, .size = 1, .align = 1};
 Type *TypeLong = &(Type){TY_LONG, .size = 8, .align = 8};
+Type *TypeShort = &(Type){TY_SHORT, .size = 2, .align = 2};
 
 // 判断 Type 是否为 整型 类型
-bool isInteger(Type *ty) { return ty->tyKind == TY_INT || ty->tyKind == TY_CHAR || ty->tyKind == TY_LONG; }
+bool isInteger(Type *ty) { return ty->tyKind == TY_INT || ty->tyKind == TY_CHAR 
+                          || ty->tyKind == TY_LONG || ty->tyKind == TY_SHORT; }
 
 // 判断 Type 是否为 ptr 类型，或为 array 类型
 // 只要 base 非 NULL 表示为指针或数组 
