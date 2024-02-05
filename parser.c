@@ -314,6 +314,7 @@ static Node* compound(Token** rest, Token* token) {
       case TK_CHAR:
       case TK_STRUCT:
       case TK_UNION:
+      case TK_LONG:
         cur->next = decla(rest, *rest);
         // 此处可能不止一个语句
         while (cur->next) {
@@ -340,7 +341,7 @@ static Node* compound(Token** rest, Token* token) {
 }
 
 // addMembers 为结构体添加成员
-static void addMembers(Member* head, Member* cur, Type* ty, Token** rest, int* offset, bool isStruct) {
+static void addMembers(Member* head, Member* cur, Type* ty, Token** rest,bool isStruct) {
   while ((*rest)->kind == TK_MUL) {
     // Delcaration 中即使修改 * TK_MUL -> TK_DEREF 也无意义，因为该 token 此后不用
     ty = pointerTo(ty);
@@ -360,13 +361,6 @@ static void addMembers(Member* head, Member* cur, Type* ty, Token** rest, int* o
   *rest = (*rest)->next;
   ty = arraySuffix(rest, *rest, ty);
   member->ty = ty;
-  if (isStruct) {
-    member->offset = *offset;
-    *offset += ty->size;
-  }
-  else 
-  // 共用体偏移量为 0
-    member->offset = 0;
   cur->next = member;
 }
 
@@ -388,11 +382,13 @@ static Type* insertType(Token** rest, Token* token, bool isStruct) {
   new->structName = strndup(token->loc, token->len);
   if (isStruct) {
     new->structNext = locTypes->structNext;
+    new->tyKind = TY_STRUCT;
     // 插入结构体类型链表
     locTypes->structNext = new;
   }
   else {
     new->structNext = uniTypes->structNext;
+    new->tyKind = TY_UNION;
     // 插入共用体类型链表
     uniTypes->structNext = new;
   }
@@ -426,46 +422,34 @@ static Type* searchType(Token* token, bool isStruct) {
 // 进行结构体或共用体变量对齐
 static void alignMembers(Type* type, bool isStruct) {
   Member* ms = type->members;
-  int alignNum = 1;
-  int rest, memOffset = 0;
-  // 确定对齐大小
-  while (ms) {
-    if (ms->ty->size > alignNum) {
-      alignNum = ms->ty->size;
+  int offset = 0;
+  // 类型对齐量默认为 1 
+  type->align = 1;
+  if (isStruct) { 
+    while (ms) {
+      // 先将上一个变量的 offset 按照此变量对齐量补齐
+      offset = alignTo(offset, ms->ty->align);
+      ms->offset = offset;
+      offset += ms->ty->size;
+
+      // type 的对齐量为最大结构体变量对齐量
+      if (type->align < ms->ty->align) 
+        type->align = ms->ty->align;
+      ms = ms->next;
     }
+    type->size = alignTo(offset, type->align);
+    return;
+  }
+  // 若为 union
+  while (ms) {
+    if (type->align < ms->ty->align)
+      type->align = ms->ty->align;
+    if (type->size < ms->ty->size)
+      type->size = ms->ty->size;
     ms = ms->next;
   }
-  ms = type->members;
-  if (isStruct) {
-    if (ms) {
-      // rest 用于表示对齐字节所剩余字节数
-      // align 表示下一个结构体成员可能开始的相对字节数（相对于对齐大小）
-      ms->align = ms->ty->size;
-      rest = alignNum - ms->align;
-      memOffset = ms->ty->size;
-      ms = ms->next;
-    }
-    while (ms) {
-      if (rest >= ms->ty->size) {
-        // 表示对齐大小还可以放下另一个成员
-        ms->offset = memOffset;
-        ms->align = alignNum - rest + ms->ty->size;
-        rest = rest - ms->ty->size;
-      }
-      else {
-        rest = alignNum - ms->ty->size;
-        memOffset = alignTo(memOffset, alignNum);
-        ms->offset = memOffset;
-        // 更新下一个变量的起始位置
-        memOffset = memOffset + ms->ty->size;
-        ms->align = ms->ty->size;
-      }
-      ms = ms->next;
-    }
-    type->size = alignTo(memOffset, alignNum);
-  }
-  else
-    type->size = alignNum;
+  // 大小对齐
+  type->size = alignTo(type->size,type->align);
 }
 
 // Declspec: 数据类型
@@ -479,6 +463,9 @@ static Type* declspec(Token** rest, Token* token) {
     case TK_CHAR:
       *rest = (*rest)->next;
       return TypeChar;
+    case TK_LONG:
+      *rest = (*rest)->next;
+      return TypeLong;
     // struct Tag? {...}
     case TK_STRUCT:
     case TK_UNION: {
@@ -517,13 +504,13 @@ static Type* declspec(Token** rest, Token* token) {
           case TK_MUL: {
             // 将此前的数据类型传入
             Type* ty = base; 
-            addMembers(&memsHead, cur, ty, rest, &offset, (token->kind == TK_STRUCT));
+            addMembers(&memsHead, cur, ty, rest, (token->kind == TK_STRUCT));
             if (cur->next) {
               cur = cur->next;
             }
             while ((*rest)->kind == TK_COM) {
               *rest = (*rest)->next;
-              addMembers(&memsHead, cur, ty, rest, &offset, (token->kind == TK_STRUCT));
+              addMembers(&memsHead, cur, ty, rest, (token->kind == TK_STRUCT));
               if (cur->next) {
                 cur = cur->next;
               }

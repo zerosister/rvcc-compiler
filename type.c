@@ -1,22 +1,30 @@
 #include "rvcc.h"
 
 //  (Type){...} 构造一个复合字面量，相当于 Type 的匿名变量
-Type *TypeInt = &(Type){TY_INT, .size = 8};
-Type *TypeChar = &(Type){TY_CHAR, .size = 1};
+Type *TypeInt = &(Type){TY_INT, .size = 4, .align = 4};
+Type *TypeChar = &(Type){TY_CHAR, .size = 1, .align = 1};
+Type *TypeLong = &(Type){TY_LONG, .size = 8, .align = 8};
 
 // 判断 Type 是否为 整型 类型
-bool isInteger(Type *ty) { return ty->tyKind == TY_INT || ty->tyKind == TY_CHAR; }
+bool isInteger(Type *ty) { return ty->tyKind == TY_INT || ty->tyKind == TY_CHAR || ty->tyKind == TY_LONG; }
 
 // 判断 Type 是否为 ptr 类型，或为 array 类型
 // 只要 base 非 NULL 表示为指针或数组 
 bool isPtr(Type *ty) { return !(ty->base == NULL); }
 
+// 新建类型
+static Type* newType(TypeKind kind, int size, int align) {
+  Type* ty = calloc(1, sizeof(Type));
+  ty->tyKind = kind;
+  ty->size = size;
+  ty->align = align;
+  return ty;
+}
+
 // 确定 type 为指针，并指向基类
 Type* pointerTo(Type *base) {
-  Type *ty = calloc(1, sizeof(Type));
-  ty->tyKind = TY_PTR;
+  Type* ty = newType(TY_PTR, 8, 8);
   ty->base = base;
-  ty->size = 8;       // 指针占 8 字节
   return ty;
 }
 
@@ -37,8 +45,7 @@ Type* funcType(Type* ty) {
 
 // 构建含有 cnt 个 ty 类型元素的数组类型
 Type* arrayOf(Type* ty, int cnt) {
-  Type* arrayType = calloc(1, sizeof(Type));
-  arrayType->tyKind = TY_ARRAY;
+  Type* arrayType = newType(TY_ARRAY, ty->size, ty->align);
   arrayType->base = ty;
   arrayType->size = ty->size * cnt;
   return arrayType;

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <errno.h>
 
 #include "stdbool.h"
@@ -58,6 +59,7 @@ typedef enum {
   TK_POI,     // .
   TK_ARROW,   // ->
   TK_UNION,   // union
+  TK_LONG,    // long
   TK_EOF     //终结符
 } TokenKind;
 
@@ -66,7 +68,7 @@ typedef struct Token Token;
 struct Token {
   TokenKind kind;  //类型
   Token* next;     //指向下一个终结符
-  int val;         //值
+  int64_t val;         //值
   char* loc;       //字符串中位置
   int len;         //长度
   char* str;       //字符串字面量值
@@ -81,6 +83,7 @@ typedef enum {
   TY_ARRAY, //数组
   TY_STRUCT,  // 结构体
   TY_UNION,   // 共用体
+  TY_LONG,    // 长整型
   TY_FUNC // 函数
 } TypeKind;
 
@@ -98,16 +101,18 @@ struct Type {
   Type* params;       // 形参
   Type* next;         // 指示下一个形参
   Type* structNext;   // 结构体类型列表的下一个
-  char* structName;    // 结构体名称
+  char* structName;   // 结构体名称
   Obj* var;           // 记录下函数形参信息
   Type* retType;      // 函数返回类型
   int size;           // 类型所占空间，若为数组则为整个数组所占空间
+  int align;          // 对齐大小 
   Member* members;    // 结构体成员
 };
 
 // 声明全局变量，在 type.c 中定义
 extern Type *TypeInt;
 extern Type *TypeChar;
+extern Type *TypeLong;
 
 // 结构体成员
 struct Member {
@@ -115,7 +120,6 @@ struct Member {
   char* name;         // 成员名
   int offset;         // 该成员在结构体中的相对地址
   Type* ty;           // 成员类型
-  int align;          // 记录对齐的大小
 };
 
 // hash_size 即为 hash 桶的个数
@@ -219,6 +223,8 @@ void verrorAt(int lineNum, char* loc, char* Fmt, va_list VA);
 void errorAt(char* loc, char* Fmt, ...);
 void errorTok(Token* token, char* Fmt, ...);
 void error(char* Fmt, ...);
+// rvcc 源文件中某文件某行出现错误，打印文件名与行号
+#define unreachable() error("Russia~,internal error at %s:%d", __FILE__, __LINE__);
 
 // 词法分析入口
 // Token* tokenize(char* p);

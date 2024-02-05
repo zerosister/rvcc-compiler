@@ -286,7 +286,7 @@ static bool isIdent2(char c) { return isIdent1(c) || ('0' <= c && c <= '9'); }
 static int specify_keyWord(Token* token) {
   static char* keyWords[] = {"return", "if", "else", "for", 
                              "while", "int", "sizeof", "char", 
-                             "struct", "union"};
+                             "struct", "union", "long"};
   // 指针数组大小 / 指针大小 = 指针个数
   for (int i = 0; i < sizeof(keyWords) / sizeof(*keyWords); i++) {
     if (equal(token, keyWords[i])) {
@@ -311,6 +311,8 @@ static int specify_keyWord(Token* token) {
           return TK_STRUCT;
         case 9:
           return TK_UNION;
+        case 10:
+          return TK_LONG;
         default:
           break;
       }

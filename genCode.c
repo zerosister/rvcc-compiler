@@ -90,6 +90,8 @@ static void load(Type* ty) {
   printLn("# 读取 a0 中存放的地址，得到值存入 a0");
   if (ty->size == 1) 
     printLn("\tlb a0,0(a0)"); 
+  else if (ty->size == 4)
+    printLn("\tlw a0,0(a0)");
   else
     printLn("\tld a0,0(a0)");
 }
@@ -115,7 +117,9 @@ static void store(Type* ty) {
   printLn("# 将 a0 值，写入 a1 存放的地址中");
   if (ty->size == 1) 
     printLn("\tsb a0,0(a1)");
-  else 
+  else if (ty->size == 4)
+    printLn("\tsw a0,0(a1)");
+  else
     printLn("\tsd a0,0(a1)");
 }
 
@@ -161,8 +165,8 @@ static void genExpr(Node* root) {
   Token* token_root = root->token;
   switch (token_root->kind) {
     case TK_NUM:
-      printLn("# 将 %d 加载至 a0", token_root->val);
-      printLn("\tli a0,%d", token_root->val);
+      printLn("# 将 %ld 加载至 a0", token_root->val);
+      printLn("\tli a0,%ld", token_root->val);
       return;
     case TK_VAR:
       // 将变量地址存入 a0
@@ -402,6 +406,9 @@ static void assignVarOffsets(Function *func) {
       while (var) {
         // 偏移量置为类型偏移量
         offset += var->ty->size;
+        // 对齐变量
+        offset = alignTo(offset, var->ty->align);
+        // 栈中地址
         var->Offset = -offset;
         var = var->next;
       }
@@ -411,6 +418,23 @@ static void assignVarOffsets(Function *func) {
   
   // 将栈对齐到 16 字节
   func->StackSize = alignTo(offset, 16);
+}
+
+// 将整型寄存器值存入栈中
+static void storeGeneral(int paraCnt, Type* param) {
+  printLn("# 将传入参数赋值给 变量%s", param->var->Name);
+  switch (param->var->ty->size) {
+    case 1:
+      printLn("\tsb a%d,%d(fp)", paraCnt, param->var->Offset); 
+      return;
+    case 4:
+      printLn("\tsw a%d,%d(fp)", paraCnt, param->var->Offset); 
+      return;
+    case 8:
+      printLn("\tsd a%d,%d(fp)", paraCnt, param->var->Offset);
+      return;
+  }
+  unreachable();    
 }
 
 static void codeGen(Function* func) {
@@ -456,12 +480,7 @@ static void codeGen(Function* func) {
     Type* param = func->params;
     int paraCnt = 0;
     while (param) {
-      printLn("# 将传入参数赋值给 变量%s", param->var->Name);
-      if (param->var->ty->size == 1) {
-        printLn("\tsb a%d,%d(fp)", paraCnt,param->var->Offset); 
-      }
-      else 
-        printLn("\tsd a%d,%d(fp)", paraCnt,param->var->Offset);
+      storeGeneral(paraCnt, param);
       paraCnt++;
       param = param->next;
     }
