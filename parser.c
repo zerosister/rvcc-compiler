@@ -316,6 +316,7 @@ static Node* compound(Token** rest, Token* token) {
       case TK_UNION:
       case TK_LONG:
       case TK_SHORT:
+      case TK_VOID:
         cur->next = decla(rest, *rest);
         // 此处可能不止一个语句
         while (cur->next) {
@@ -453,31 +454,79 @@ static void alignMembers(Type* type, bool isStruct) {
   type->size = alignTo(type->size,type->align);
 }
 
-// Declspec: 数据类型
-static Type* declspec(Token** rest, Token* token) {
-  // 消耗掉特定关键字
+// 判断 token 是否为类型关键字
+static bool isKeyword(Token* token) {
   switch (token->kind) {
     case TK_INT:
-      // 吸收 int
-      *rest = (*rest)->next;
-      return TypeInt;
     case TK_CHAR:
-      *rest = (*rest)->next;
-      return TypeChar;
     case TK_LONG:
-      *rest = (*rest)->next;
-      return TypeLong;
     case TK_SHORT:
-      *rest = (*rest)->next;
-      return TypeShort;
-    // struct Tag? {...}
+    case TK_VOID:
     case TK_STRUCT:
-    case TK_UNION: {
+    case TK_UNION:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Declspec: 数据类型
+static Type* declspec(Token** rest, Token* token) {
+  // 用位数表示数据类型
+  static enum {
+    VOID = 1 << 0,
+    CHAR = 1 << 2,
+    SHORT = 1 << 4,
+    INT = 1 << 6,
+    LONG = 1 << 8,
+    OTHER = 1 << 10
+  } nums;
+  int typeNum = 0;
+
+  while (isKeyword(*rest)) {
+    switch ((*rest)->kind) {
+      case TK_VOID:
+        typeNum += VOID;
+        break;
+      case TK_CHAR:
+        typeNum += CHAR;
+        break;
+      case TK_SHORT:
+        typeNum += SHORT;
+        break;
+      case TK_INT:
+        typeNum += INT;
+        break;
+      case TK_LONG:
+        typeNum += LONG;
+        break;
+      case TK_STRUCT:
+      case TK_UNION:
+        typeNum += OTHER;
+        token = *rest; 
+        break;
+      default:
+        break;
+    }
+    *rest = (*rest)->next;
+  }
+  switch (typeNum) {
+    case VOID:
+      return TypeInt;
+    case CHAR:
+      return TypeChar;
+    case SHORT:
+    case SHORT + INT:
+      return TypeShort;
+    case INT:
+      return TypeInt;
+    case LONG:
+    case LONG + INT:
+      return TypeLong;
+    case OTHER:{
       int offset = 0;
       Member memsHead = {};
       Member* cur = &memsHead;
-      // 吸收 struct 
-      *rest = (*rest)->next;
       Type* type = calloc(1, sizeof(Type));
       if (token->kind == TK_STRUCT)
         type->tyKind = TY_STRUCT;
@@ -531,11 +580,9 @@ static Type* declspec(Token** rest, Token* token) {
       alignMembers(type, (token->kind == TK_STRUCT));
       return type;
     }
-    case TK_EOF:
-      return NULL;  
     default:
-      errorTok(token, "Little Dragon~, data structure not defined~");
-  }  
+      break;
+  }
 }
 
 // ([num])*

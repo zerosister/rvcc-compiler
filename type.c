@@ -5,6 +5,7 @@ Type *TypeInt = &(Type){TY_INT, .size = 4, .align = 4};
 Type *TypeChar = &(Type){TY_CHAR, .size = 1, .align = 1};
 Type *TypeLong = &(Type){TY_LONG, .size = 8, .align = 8};
 Type *TypeShort = &(Type){TY_SHORT, .size = 2, .align = 2};
+Type *TypeVoid = &(Type){TY_VOID, .size = 1, .align = 1};
 
 // 判断 Type 是否为 整型 类型
 bool isInteger(Type *ty) { return ty->tyKind == TY_INT || ty->tyKind == TY_CHAR 
@@ -133,6 +134,8 @@ void addType(Node *node) {
     case TK_DEREF:
       if (!(isPtr(node->LNode->ty))) 
         errorTok(node->token, "Warrior~,invalid pointer dereference");
+      if (node->LNode->ty->tyKind == TY_VOID)
+        errorTok(node->token, "Fang~, dereferencing a void pointer");
       node->ty = node->LNode->ty->base;
     default:
       break;
