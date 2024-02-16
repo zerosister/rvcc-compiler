@@ -62,6 +62,7 @@ typedef enum {
   TK_LONG,    // long
   TK_SHORT,   // short
   TK_VOID,    // void
+  TK_TYDEF,   // typedef
   TK_EOF     //终结符
 } TokenKind;
 
@@ -113,6 +114,14 @@ struct Type {
   Member* members;    // 结构体成员
 };
 
+// 重命名 type
+typedef struct RenameType RenameType;
+struct RenameType {
+  Type* type;
+  char* name;
+  RenameType* next;
+};
+
 // 声明全局变量，在 type.c 中定义
 extern Type *TypeInt;
 extern Type *TypeChar;
@@ -159,6 +168,7 @@ struct Scope {
   HashTable* hashTable;
   Type* structList;
   Type* unionList;
+  RenameType* defList;
   Scope* next;
 };
 

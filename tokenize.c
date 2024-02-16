@@ -287,7 +287,7 @@ static int specify_keyWord(Token* token) {
   static char* keyWords[] = {"return", "if", "else", "for", 
                              "while", "int", "sizeof", "char", 
                              "struct", "union", "long", "short",
-                             "void"};
+                             "void", "typedef"};
   // 指针数组大小 / 指针大小 = 指针个数
   for (int i = 0; i < sizeof(keyWords) / sizeof(*keyWords); i++) {
     if (equal(token, keyWords[i])) {
@@ -318,6 +318,8 @@ static int specify_keyWord(Token* token) {
           return TK_SHORT;
         case 12:
           return TK_VOID;
+        case 13:
+          return TK_TYDEF;
         default:
           break;
       }

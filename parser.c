@@ -15,12 +15,14 @@ HashTable* hashHead;
 // 结构体，共用体类型链表
 Type* locTypes = NULL;
 Type* uniTypes = NULL;
+RenameType* defTypes = NULL;
 
 // 新建一个作用域
 static void enterScope() {
   HashTable* locals = calloc(1, sizeof(HashTable));
   locTypes = calloc(1, sizeof(Type));
   uniTypes = calloc(1, sizeof(Type));
+  defTypes = calloc(1, sizeof(RenameType));
   Scope* scope = calloc(1, sizeof(Scope));
   // 进栈
   scope->next = scopeList->next;
@@ -28,6 +30,7 @@ static void enterScope() {
   scope->hashTable = locals;
   scope->structList = locTypes;
   scope->unionList = uniTypes;
+  scope->defList = defTypes;
   // 插入符号表链表
   locals->next = hashHead->next;
   hashHead->next = locals;
@@ -39,6 +42,9 @@ static void exitScope() {
   if (!(scopeList->next)) 
     error("Jackson~,T.T 缺少作用域");
   scopeList->next = scopeList->next->next;
+  // if (scopeList->next) {
+  //   defTypes = scopeList->next->defList;    
+  // }
 }
 
 // 自行构建 token 变量
@@ -54,10 +60,10 @@ static Token poiToken = {TK_POI};
 // so，回归课程中方法
 // 性质：递归下降
 
-// program = (Function | GlobalVar)*
+// program = (Function | GlobalVar | Typedef)*
 // Function = Declspec '*'* Var Typesuffix Compound
 // Typesuffix = '(' (Declspec Declarator (, Declspec Declarator)*)? ')'
-// Compound = { (Decla | Stmt)* }
+// Compound = { (Decla | Stmt | Typedef)* }
 // Decla = Declspec (Declarator Decla_Prim)? ';'
 // Decla_Prim =  (('=' Assign)+(',' Declarator ('=' Assign)?)*))?
 // Declspec: 数据类型
@@ -115,6 +121,7 @@ static Node* primary(Token** rest, Token* token);
 static Node* funcArgu(Token** rest, Token* token);
 
 static Type* arraySuffix(Token** rest, Token* token, Type* ty);
+static Type* declspec(Token** rest, Token* token);
 
 // 得到全局变量
 static HashTable* getGlobals(void) {
@@ -300,7 +307,35 @@ static Status* newStatus(StatusKind kind) {
   return status;
 }
 
-// Compound = { (Decla | Stmt)* }
+// 定义类型
+static void storeType(Token** rest) {
+  *rest = (*rest)->next;
+  Type* base = declspec(rest, *rest);
+  if (base == NULL) {
+      // 说明 typedef 没有指定已经存在名，默认 int
+      base = TypeInt;
+    }
+  do {
+    if ((*rest)->kind == TK_COM) 
+      *rest = (*rest)->next;
+    if ((*rest)->kind == TK_SEM) 
+      break;
+    Type* ty = base;
+    char* name = strndup((*rest)->loc, (*rest)->len);
+    // 吸收类型重命名
+    *rest = (*rest)->next;
+    ty = arraySuffix(rest, *rest, ty);
+    RenameType* newName = calloc(1, sizeof(RenameType));
+    newName->name = name;
+    newName->type = ty;
+    // 插入链表
+    newName->next = scopeList->next->defList->next;
+    scopeList->next->defList->next = newName;
+  } while((*rest)->kind == TK_COM);
+  *rest = skip(*rest, ";");
+}
+
+// Compound = { (Decla | Stmt | Typedef)* }
 static Node* compound(Token** rest, Token* token) {
   *rest = skip(token, "{");
   enterScope();
@@ -323,6 +358,24 @@ static Node* compound(Token** rest, Token* token) {
           cur = cur->next;
           addType(cur);
         }
+        break;
+      case TK_VAR: {
+        if ((*rest)->next->kind == TK_VAR) {
+          // 为 decla 语句
+          cur->next = decla(rest, *rest);
+          while (cur->next) {
+            cur = cur->next;
+            addType(cur);
+          }
+          break;
+        }
+        else
+          cur->next = stmt(rest, *rest);
+        break;
+      }
+      // 当为 typedef 时
+      case TK_TYDEF:
+        storeType(rest);
         break;
       default:
         // => Stmt 
@@ -470,6 +523,42 @@ static bool isKeyword(Token* token) {
   }
 }
 
+// 判断是否为 typedef 的类型
+static bool isRename(Token* token) {
+  Scope* sc = scopeList->next;
+  RenameType* re;
+  while (sc) {
+    re = sc->defList->next;
+    while (re) {
+      if (!strncmp(re->name, token->loc, token->len)) {
+        // 找到对应类型重命名
+        return true;
+      }
+      re = re->next;
+    }
+    sc = sc->next;
+  }
+}
+
+// 寻找 type
+static Type* findType(Token* token) {
+  Scope* sc = scopeList->next;
+  RenameType* re;
+  while (sc) {
+    re = sc->defList->next;
+    while (re) {
+    if (!strncmp(re->name, token->loc, strlen(re->name))) {
+      // 寻找到了 type
+      return re->type;
+    }
+    re = re->next;
+    }
+    sc = sc->next;
+  }
+  
+  return NULL;
+}
+
 // Declspec: 数据类型
 static Type* declspec(Token** rest, Token* token) {
   // 用位数表示数据类型
@@ -482,8 +571,9 @@ static Type* declspec(Token** rest, Token* token) {
     OTHER = 1 << 10
   } nums;
   int typeNum = 0;
-
-  while (isKeyword(*rest)) {
+  if ((*rest)->kind == TK_EOF) 
+    return NULL;
+  while (isKeyword(*rest) || (isRename(*rest) && (*rest)->next->kind == TK_VAR)) {
     switch ((*rest)->kind) {
       case TK_VOID:
         typeNum += VOID;
@@ -505,6 +595,11 @@ static Type* declspec(Token** rest, Token* token) {
         typeNum += OTHER;
         token = *rest; 
         break;
+      case TK_VAR: 
+        // 是重命名 类型
+        typeNum += OTHER;
+        token = *rest;
+        break;
       default:
         break;
     }
@@ -522,8 +617,13 @@ static Type* declspec(Token** rest, Token* token) {
       return TypeInt;
     case LONG:
     case LONG + INT:
+    case LONG + LONG:
       return TypeLong;
     case OTHER:{
+      if (token->kind == TK_VAR) {
+        // 为 typedef 的类型
+        return findType(token);
+      }
       int offset = 0;
       Member memsHead = {};
       Member* cur = &memsHead;
@@ -583,6 +683,7 @@ static Type* declspec(Token** rest, Token* token) {
     default:
       break;
   }
+  return NULL;
 }
 
 // ([num])*
@@ -1368,17 +1469,25 @@ static Function* function(Token** rest, Token* token, Type* baseType) {
   return initGlobals;
 }
 
-// program = (Function | GlobalVar)*
+// program = (Function | GlobalVar | Typedef)*
 Program* parse(Token** rest, Token* token) {
   Function head = {};
   Function* cur = &head;
   scopeList = calloc(1, sizeof(Scope));
   hashHead = calloc(1, sizeof(HashTable)); 
   enterScope();
-  Type* baseType = declspec(rest, token);
-  while (baseType != NULL) { 
+  if (token->kind == TK_TYDEF) {
+    storeType(rest);
+  }
+  Type* baseType = declspec(rest, *rest);
+  while (baseType != NULL || (*rest)->kind == TK_TYDEF) { 
+    if ((*rest)->kind == TK_TYDEF) {
+      storeType(rest);
+      baseType = declspec(rest, *rest);
+      continue;
+    }
     cur->next = function(rest, *rest, baseType);
-    cur = cur->next;
+    cur = cur->next;    
     baseType = declspec(rest, *rest);
   }
   exitScope();
